@@ -1,0 +1,14 @@
+# Ignorar Lixo do Python
+__pycache__/
+*.py[cod]
+
+# Ignorar Datasets e Resultados Pesados
+data/
+savi_experiments/
+*.png
+*.jpg
+*.json
+*.pkl
+
+# Ignorar configs do editor
+.vscode/
