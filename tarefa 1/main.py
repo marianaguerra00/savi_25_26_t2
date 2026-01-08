@@ -11,7 +11,7 @@ from datetime import datetime
 
 # Imports dos módulos desenvolvidos
 from dataset import get_mnist_datasets
-from model import ModelBetterCNN
+from model import Model, ModelBetterCNN
 from trainer import Trainer
 
 def sigintHandler(signum, frame):
@@ -71,7 +71,7 @@ def main():
     # 2. Create Model
     # ------------------------------------
     model = ModelBetterCNN()
-    print(f"Modelo 'ModelBetterCNN' carregado com {model.getNumberOfParameters()} parâmetros.") 
+    print(f"Modelo carregado com {model.getNumberOfParameters()} parâmetros.") 
 
     # ------------------------------------
     # 3. Create Trainer
