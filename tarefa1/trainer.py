@@ -172,12 +172,20 @@ class Trainer():
         print(f"Resultados guardados em {json_filename}")
 
     def draw(self):
+
+         # plot training
         xs = range(1, len(self.train_epoch_losses)+1)
-        plt.plot(xs, self.train_epoch_losses, 'r-', linewidth=2, label='Train')
-        plt.plot(xs, self.test_epoch_losses, 'b-', linewidth=2, label='Test')
-        plt.legend()
+        ys = self.train_epoch_losses
+        plt.plot(xs, ys, 'r-', linewidth=2)
+
+        # plot testing
+        xs = range(1, len(self.test_epoch_losses)+1)
+        ys = self.test_epoch_losses
+        plt.plot(xs, ys, 'b-', linewidth=2)
+
+        plt.legend(['Train', 'Test'])
+
         plt.savefig('training.png')
-        plt.close() # Limpar figura
 
     def saveTrain(self):
         checkpoint = {
