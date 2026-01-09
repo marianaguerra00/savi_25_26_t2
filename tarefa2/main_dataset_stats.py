@@ -223,7 +223,7 @@ def main():
     parser.add_argument(
         "--version",
         required=True,
-        choices=["versionB", "versionD"],
+        choices=["versionA", "versionB", "versionC", "versionD"],
         help="Dataset version to analyze"
     )
 

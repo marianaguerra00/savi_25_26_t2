@@ -12,3 +12,9 @@ savi_experiments/
 
 # Ignorar configs do editor
 .vscode/
+
+# Ignorar dados de entrada
+tarefa2/data/
+
+# Ignorar resultados gerados
+tarefa2/output/
