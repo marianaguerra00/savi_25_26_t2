@@ -20,23 +20,22 @@ def sigintHandler(signum, frame):
 
 def main():
 
-    # -----------------
-    # Setup argparse
-    # -----------------
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    # caminho correto para datasets
-    DEFAULT_DATASET_PATH = r"C:\Users\maria\Desktop\datasets\mnist_aapi"
-    EXPERIMENT_PATH = r"C:\Users\maria\Desktop\datasets\savi_experiments"
+    DEFAULT_DATASET_PATH = os.path.join(BASE_DIR, "datasets", "mnist_aapi")
+    EXPERIMENT_PATH = os.path.join(BASE_DIR, "experiments", "savi_experiments")
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-df', '--dataset_folder', type=str, default=DEFAULT_DATASET_PATH)
     parser.add_argument('-bs', '--batch_size', type=int, default=64)
     parser.add_argument('-ne', '--num_epochs', type=int, default=10)
-    parser.add_argument('-pe', '--percentage_examples', type=float, default=0.2, help="Percentage of examples to use for training and testing (0-1)")
-    parser.add_argument('-ep', '--experiment_path', type=str, default=EXPERIMENT_PATH, help="Path to save experiment results")
+    parser.add_argument('-pe', '--percentage_examples', type=float, default=0.2,
+                        help="Percentage of examples to use for training and testing (0-1)")
+    parser.add_argument('-ep', '--experiment_path', type=str, default=EXPERIMENT_PATH,
+                        help="Path to save experiment results")
     parser.add_argument('-rt', '--resume_training', action='store_true',
                         help='Resume training from last checkpoint if available.')
-    
+
     args = vars(parser.parse_args())
     print(args)
     
