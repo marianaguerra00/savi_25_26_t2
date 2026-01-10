@@ -52,14 +52,6 @@ class Trainer():
         if self.args['resume_training']:
             self.loadTrain()
 
-        # Setup plot
-        plt.title("Training Loss vs epochs")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        self.axis = plt.gca()
-        self.axis.set_xlim([1, self.args['num_epochs']+1]) 
-        self.axis.set_ylim([0, 0.5]) # Ajustado para escala da CrossEntropy
-
     def train(self): 
         num_epochs = self.args['num_epochs']
 
@@ -173,7 +165,15 @@ class Trainer():
 
     def draw(self):
 
-         # plot training
+        # Setup plot
+        plt.title("Loss vs Epochs")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        self.axis = plt.gca()
+        self.axis.set_xlim([1, self.args['num_epochs']+1]) 
+        self.axis.set_ylim([0, 0.5]) # Ajustado para escala da CrossEntropy
+
+        # plot training
         xs = range(1, len(self.train_epoch_losses)+1)
         ys = self.train_epoch_losses
         plt.plot(xs, ys, 'r-', linewidth=2)
