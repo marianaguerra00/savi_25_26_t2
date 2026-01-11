@@ -12,7 +12,6 @@ def loadImagesUbyte(filePath, numberOfImages, imageSize):
     data = np.fromfile(filePath, dtype=np.uint8)
     return data.reshape(numberOfImages, imageSize, imageSize)
 
-
 # -------------------------------------------------
 # LOAD UBYTE LABELS
 # -------------------------------------------------
@@ -49,7 +48,7 @@ def loadLabelsUbyte(filePath):
     return annotationsPerImage
 
 # -------------------------------------------------
-# VISUALIZATION
+# VISUALIZATION Interface
 # -------------------------------------------------
 def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
 
@@ -184,7 +183,7 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
 
 
 # -------------------------------------------------
-# STATISTICS
+# STATISTICS Computation
 # -------------------------------------------------
 
 def computeStatistics(allAnnotations):
@@ -216,6 +215,7 @@ def setupPlot(title, xlabel, ylabel):
 
 def main():
 
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="MNIST Object Detection Dataset Statistics"
     )
@@ -236,6 +236,7 @@ def main():
 
     args = parser.parse_args()
 
+    # Build dataset paths
     baseDirectory = os.path.dirname(os.path.abspath(__file__))
     versionDirectory = os.path.join(
         baseDirectory, "output", args.version
@@ -251,19 +252,21 @@ def main():
         f"{args.split}-labels-ubyte.bin"
     )
 
+    # Dataset parameters
     numberOfImages = 60000 if args.split == "train" else 10000
     imageSize = 128
 
+    # Load data
     images = loadImagesUbyte(
         imageFile, numberOfImages, imageSize
     )
 
     annotations = loadLabelsUbyte(labelFile)
 
-    # ---- STATISTICS (dados, não plots) ----
+    # Compute statistics
     digitCounts, classCounts, boxSizes = computeStatistics(annotations)
 
-    # ---- INTERFACE ÚNICA ----
+    # Run interactive visualization
     runInterface(
         images=images[:50],
         annotations=annotations[:50],

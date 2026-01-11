@@ -7,9 +7,14 @@ import argparse
 from torchvision import transforms, datasets
 
 
+# -------------------------------------------------
+# LOAD MNIST DATA
+# -------------------------------------------------
 def getMnistData(dataPath):
+    # Convert images to tensors
     transform = transforms.ToTensor()
 
+    # Load MNIST training dataset
     trainDataset = datasets.MNIST(
         root=dataPath,
         train=True,
@@ -17,6 +22,7 @@ def getMnistData(dataPath):
         transform=transform
     )
 
+    # Load MNIST test dataset
     testDataset = datasets.MNIST(
         root=dataPath,
         train=False,
@@ -27,6 +33,7 @@ def getMnistData(dataPath):
     trainImages = []
     trainLabels = []
 
+    # Convert training images to uint8 numpy arrays
     for image, label in trainDataset:
         # image is [1, 28, 28] tensor in [0,1]
         trainImages.append((image.numpy()[0] * 255).astype(np.uint8))
@@ -35,6 +42,7 @@ def getMnistData(dataPath):
     testImages = []
     testLabels = []
 
+    # Convert test images to uint8 numpy arrays
     for image, label in testDataset:
         testImages.append((image.numpy()[0] * 255).astype(np.uint8))
         testLabels.append(label)
@@ -47,20 +55,16 @@ def getMnistData(dataPath):
     )
 
 
-
-
-
 # ------------------------------------------------------------
 # GEOMETRY
 # ------------------------------------------------------------
 def boxesOverlap(firstBox, secondBox):
-    """
-    Check if two bounding boxes overlap.
-    Each box is (x, y, width, height).
-    """
+    # Check if two bounding boxes overlap
+    # Each box is defined as (x, y, width, heigh
     x1, y1, w1, h1 = firstBox
     x2, y2, w2, h2 = secondBox
 
+    # Return True if boxes overlap, False otherwise
     return not (
         x1 + w1 <= x2 or
         x2 + w2 <= x1 or
@@ -86,6 +90,7 @@ def generateSplit(
     allowScaleVariation
 ):
 
+    # Create output directory if it does not exis
     os.makedirs(outputDirectory, exist_ok=True)
 
     maximumPlacementAttempts = 100
@@ -93,8 +98,10 @@ def generateSplit(
     allImages = []
     allAnnotations = []
 
+    # Generate images
     for imageIndex in range(numberOfImages):
 
+        # Create empty canvas
         canvasImage = np.zeros(
             (outputImageSize, outputImageSize),
             dtype=np.uint8
@@ -103,22 +110,28 @@ def generateSplit(
         boundingBoxes = []
         annotations = []
 
+        # Random number of digits per image
         numberOfDigits = random.randint(minimumDigits, maximumDigits)
 
+
+        # Place each digit
         for _ in range(numberOfDigits):
 
             for attempt in range(maximumPlacementAttempts):
 
+                # Pick random MNIST digit
                 randomIndex = random.randint(0, len(images) - 1)
                 digitImage = images[randomIndex]
                 digitLabel = labels[randomIndex]
 
+                # Choose digit size
                 digitSize = (
                     random.randint(minimumDigitSize, maximumDigitSize)
                     if allowScaleVariation
                     else minimumDigitSize
                 )
 
+                # Resize digit
                 digitImage = cv2.resize(
                     digitImage, (digitSize, digitSize)
                 )
@@ -134,12 +147,14 @@ def generateSplit(
                     positionX, positionY, digitSize, digitSize
                 )
 
+                # Check for overlap with existing boxes
                 if any(
                     boxesOverlap(candidateBox, box)
                     for box in boundingBoxes
                 ):
                     continue
-
+                
+                # Place digit on canvas
                 canvasImage[
                     positionY:positionY + digitSize,
                     positionX:positionX + digitSize
@@ -151,6 +166,7 @@ def generateSplit(
                     digitImage
                 )
 
+                # Save bounding box and annotation
                 boundingBoxes.append(candidateBox)
                 annotations.append(
                     (digitLabel, candidateBox)
@@ -160,11 +176,13 @@ def generateSplit(
         allImages.append(canvasImage)
         allAnnotations.append(annotations)
 
+         # Print progress
         if imageIndex % 1000 == 0:
             print(f"[{splitName}] {imageIndex}/{numberOfImages}")
 
-    # ---- SAVE 2 FILES ONLY ----
-
+    # -----------------------------------
+    # SAVE FILES
+    # -----------------------------------
     saveImagesAsUbyte(
         np.stack(allImages),
         os.path.join(
@@ -183,21 +201,24 @@ def generateSplit(
 # -----------------------------------
 # Save as Ubyte
 # ----------------------------------
-
 def saveImagesAsUbyte(imagesArray, outputFilePath):
+    # Save images as raw uint8 binary file
     imagesArray = np.asarray(imagesArray, dtype=np.uint8)
     imagesArray.tofile(outputFilePath)
 
 
 def saveLabelsAsUbyte(allAnnotations, outputFilePath):
+    # Save labels and bounding boxes as binary file
     with open(outputFilePath, "wb") as file:
         for annotations in allAnnotations:
-
+            
+            # Write number of objects in image
             numberOfObjects = len(annotations)
             file.write(
                 np.array([numberOfObjects], dtype=np.uint8).tobytes()
             )
 
+            # Write each annotation
             for digitLabel, (x, y, w, h) in annotations:
                 file.write(
                     np.array([digitLabel], dtype=np.uint8).tobytes()
@@ -210,9 +231,9 @@ def saveLabelsAsUbyte(allAnnotations, outputFilePath):
 # -----------------
 # MAIN
 # ------------------
-
 def main():
 
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="MNIST Object Detection Dataset Generator"
     )
@@ -227,12 +248,13 @@ def main():
 
     args = parser.parse_args()
 
-    baseDirectory = os.path.dirname(os.path.abspath(__file__))
-    rawMnistDirectory = os.path.join(baseDirectory, "rawMNIST")
-    outputDirectory = os.path.join(baseDirectory, "output")
 
+    # Define directories
+    baseDirectory = os.path.dirname(os.path.abspath(__file__))
+    outputDirectory = os.path.join(baseDirectory, "output")
     dataDirectory = os.path.join(baseDirectory, "data")
 
+    # Load MNIST data
     (
         trainImages,
         trainLabels,
@@ -245,6 +267,7 @@ def main():
     numberOfImagesTest = 10000
     numberOfImagesTrain = 60000
 
+    # Dataset version configurations
     versionConfigurations = {
     "A": {
         "name": "versionA",
@@ -280,6 +303,8 @@ def main():
     }
 }
 
+
+    # Generate datasets for selected versions
     for versionKey in args.versions:
 
         config = versionConfigurations[versionKey]
@@ -288,6 +313,7 @@ def main():
             outputDirectory, config["name"]
         )
 
+        # Generate training split
         generateSplit(
             images=trainImages,
             labels=trainLabels,
@@ -302,6 +328,7 @@ def main():
             allowScaleVariation=config["allowScaleVariation"]
         )
 
+        # Generate test split
         generateSplit(
             images=testImages,
             labels=testLabels,
