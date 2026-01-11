@@ -104,7 +104,19 @@ class Trainer():
             print(f"Época {i+1}: Loss Treino = {train_epoch_loss:.4f} | Loss Teste = {test_epoch_loss:.4f}")
             self.draw() 
 
+            # ATUALIZAÇÃO DO INDICE DA ÉPOCA
+            self.epoch_idx = i + 1
+
+            # --- CORREÇÃO 1: GRAVAR CHECKPOINT A CADA ÉPOCA ---
+            self.saveTrain() 
+
         print(f"\n--- Treino Concluído ({num_epochs} Épocas) ---")
+        
+        # --- CORREÇÃO 2: GRAVAR O MODELO PARA A TAREFA 3 ---
+        # Grava apenas os pesos num ficheiro .pth limpo na raiz do projeto ou na pasta do experiment
+        final_weights_path = "mnist_cnn.pth"
+        torch.save(self.model.state_dict(), final_weights_path)
+        print(f"PESOS FINAIS GRAVADOS EM: {os.path.abspath(final_weights_path)}")
 
     def evaluate(self):
         print("\n--- A Iniciar Avaliação Final ---")

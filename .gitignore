@@ -9,12 +9,12 @@ savi_experiments/
 *.jpg
 *.json
 *.pkl
+*.pth
+*.bin
 
 # Ignorar configs do editor
 .vscode/
 
-# Ignorar dados de entrada
-tarefa2/data/
+output/
+data/
 
-# Ignorar resultados gerados
-tarefa2/output/
