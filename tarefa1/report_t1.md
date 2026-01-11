@@ -58,7 +58,7 @@ Therefore, the selection of the final model was not driven solely by the global 
 ## 3. Final Model Analysis
 Based on the experimental data, the model with **high droupout** (p=0.8) was selected as the final solution. Upon this architecture, we conducted a final evaluation.
 
-### 3.1. Loss Graphic
+### 3.1. Loss Plot
 
 <p align="center">
   <img src="training.png" />
