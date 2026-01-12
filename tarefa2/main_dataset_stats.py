@@ -239,7 +239,7 @@ def main():
     # Build dataset paths
     baseDirectory = os.path.dirname(os.path.abspath(__file__))
     versionDirectory = os.path.join(
-        baseDirectory, "output", args.version
+        baseDirectory, "..\improved_dataset", args.version
     )
 
     imageFile = os.path.join(

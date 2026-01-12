@@ -251,7 +251,7 @@ def main():
 
     # Define directories
     baseDirectory = os.path.dirname(os.path.abspath(__file__))
-    outputDirectory = os.path.join(baseDirectory, "output")
+    outputDirectory = os.path.join(baseDirectory, "..\improved_dataset")
     dataDirectory = os.path.join(baseDirectory, "data")
 
     # Load MNIST data
