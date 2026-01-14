@@ -28,14 +28,10 @@ class DetectionConfig:
     # Model confidence filtering
     confidenceThreshold = 0.6         # Minimum softmax confidence
     confidenceMargin = 0.25           # Difference between top-1 and top-2
-    entropyThreshold = 1.5            # Maximum allowed entropy
+    # entropyThreshold = 1.5           # Maximum allowed entropy
 
     # Border rejection parameters
     borderMarginRatio = 0.05          # Margin as percentage of window size
-
-    # Debug flag
-    debug = False
-
 
 # Instantiate configuration
 cfg = DetectionConfig()
@@ -239,8 +235,8 @@ def main():
                 entropy = -torch.sum(probs * torch.log(probs + 1e-8))
 
             # Reject uncertain predictions
-            if entropy.item() > cfg.entropyThreshold:
-                continue
+            #if entropy.item() > cfg.entropyThreshold:
+                #continue
 
             if confidence.item() < cfg.confidenceThreshold:
                 continue
