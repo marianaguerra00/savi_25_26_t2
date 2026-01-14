@@ -10,8 +10,9 @@ from torchvision import transforms, datasets
 # -------------------------------------------------
 # LOAD MNIST DATA
 # -------------------------------------------------
+
 def getMnistData(dataPath):
-    # Convert images to tensors
+    # Define transform to convert images to tensors
     transform = transforms.ToTensor()
 
     # Load MNIST training dataset
@@ -35,7 +36,7 @@ def getMnistData(dataPath):
 
     # Convert training images to uint8 numpy arrays
     for image, label in trainDataset:
-        # image is [1, 28, 28] tensor in [0,1]
+        # Image tensor shape: [1, 28, 28] with values in [0, 1]
         trainImages.append((image.numpy()[0] * 255).astype(np.uint8))
         trainLabels.append(label)
 
@@ -58,9 +59,10 @@ def getMnistData(dataPath):
 # ------------------------------------------------------------
 # GEOMETRY
 # ------------------------------------------------------------
+
 def boxesOverlap(firstBox, secondBox):
     # Check if two bounding boxes overlap
-    # Each box is defined as (x, y, width, heigh
+    # Box format: (x, y, width, height)
     x1, y1, w1, h1 = firstBox
     x2, y2, w2, h2 = secondBox
 
@@ -76,6 +78,7 @@ def boxesOverlap(firstBox, secondBox):
 # -----------------------------------
 # DATASET GENERATION
 # ----------------------------------
+
 def generateSplit(
     images,
     labels,
@@ -90,7 +93,7 @@ def generateSplit(
     allowScaleVariation
 ):
 
-    # Create output directory if it does not exis
+    # Create output directory if it does not exist
     os.makedirs(outputDirectory, exist_ok=True)
 
     maximumPlacementAttempts = 100
@@ -98,10 +101,10 @@ def generateSplit(
     allImages = []
     allAnnotations = []
 
-    # Generate images
+    # Generate images for the split
     for imageIndex in range(numberOfImages):
 
-        # Create empty canvas
+        # Create empty black canvas
         canvasImage = np.zeros(
             (outputImageSize, outputImageSize),
             dtype=np.uint8
@@ -110,32 +113,32 @@ def generateSplit(
         boundingBoxes = []
         annotations = []
 
-        # Random number of digits per image
+        # Random number of digits to place in image
         numberOfDigits = random.randint(minimumDigits, maximumDigits)
-
 
         # Place each digit
         for _ in range(numberOfDigits):
 
             for attempt in range(maximumPlacementAttempts):
 
-                # Pick random MNIST digit
+                # Randomly select MNIST digit
                 randomIndex = random.randint(0, len(images) - 1)
                 digitImage = images[randomIndex]
                 digitLabel = labels[randomIndex]
 
-                # Choose digit size
+                # Determine digit size
                 digitSize = (
                     random.randint(minimumDigitSize, maximumDigitSize)
                     if allowScaleVariation
                     else minimumDigitSize
                 )
 
-                # Resize digit
+                # Resize digit image
                 digitImage = cv2.resize(
                     digitImage, (digitSize, digitSize)
                 )
 
+                # Random placement position
                 positionX = random.randint(
                     0, outputImageSize - digitSize
                 )
@@ -147,14 +150,14 @@ def generateSplit(
                     positionX, positionY, digitSize, digitSize
                 )
 
-                # Check for overlap with existing boxes
+                # Check overlap with existing bounding boxes
                 if any(
                     boxesOverlap(candidateBox, box)
                     for box in boundingBoxes
                 ):
                     continue
                 
-                # Place digit on canvas
+                # Place digit onto canvas using max blending
                 canvasImage[
                     positionY:positionY + digitSize,
                     positionX:positionX + digitSize
@@ -166,7 +169,7 @@ def generateSplit(
                     digitImage
                 )
 
-                # Save bounding box and annotation
+                # Store bounding box and label
                 boundingBoxes.append(candidateBox)
                 annotations.append(
                     (digitLabel, candidateBox)
@@ -176,13 +179,15 @@ def generateSplit(
         allImages.append(canvasImage)
         allAnnotations.append(annotations)
 
-         # Print progress
+        # Print generation progress
         if imageIndex % 1000 == 0:
             print(f"[{splitName}] {imageIndex}/{numberOfImages}")
 
     # -----------------------------------
     # SAVE FILES
     # -----------------------------------
+
+    # Save generated images to binary file
     saveImagesAsUbyte(
         np.stack(allImages),
         os.path.join(
@@ -190,6 +195,7 @@ def generateSplit(
         )
     )
 
+    # Save annotations to binary file
     saveLabelsAsUbyte(
         allAnnotations,
         os.path.join(
@@ -201,8 +207,9 @@ def generateSplit(
 # -----------------------------------
 # Save as Ubyte
 # ----------------------------------
+
 def saveImagesAsUbyte(imagesArray, outputFilePath):
-    # Save images as raw uint8 binary file
+    # Save image array as raw uint8 binary file
     imagesArray = np.asarray(imagesArray, dtype=np.uint8)
     imagesArray.tofile(outputFilePath)
 
@@ -212,13 +219,13 @@ def saveLabelsAsUbyte(allAnnotations, outputFilePath):
     with open(outputFilePath, "wb") as file:
         for annotations in allAnnotations:
             
-            # Write number of objects in image
+            # Write number of objects in the image
             numberOfObjects = len(annotations)
             file.write(
                 np.array([numberOfObjects], dtype=np.uint8).tobytes()
             )
 
-            # Write each annotation
+            # Write each annotation entry
             for digitLabel, (x, y, w, h) in annotations:
                 file.write(
                     np.array([digitLabel], dtype=np.uint8).tobytes()
@@ -231,6 +238,7 @@ def saveLabelsAsUbyte(allAnnotations, outputFilePath):
 # -----------------
 # MAIN
 # ------------------
+
 def main():
 
     # Parse command-line arguments
@@ -248,13 +256,12 @@ def main():
 
     args = parser.parse_args()
 
-
-    # Define directories
+    # Define base directories
     baseDirectory = os.path.dirname(os.path.abspath(__file__))
-    outputDirectory = os.path.join(baseDirectory, "..\improved_dataset")
+    outputDirectory = os.path.join(baseDirectory, "..\\improved_dataset")
     dataDirectory = os.path.join(baseDirectory, "data")
 
-    # Load MNIST data
+    # Load MNIST images and labels
     (
         trainImages,
         trainLabels,
@@ -262,47 +269,45 @@ def main():
         testLabels
     ) = getMnistData(dataDirectory)
 
-
     outputImageSize = 128
     numberOfImagesTest = 10000
     numberOfImagesTrain = 60000
 
     # Dataset version configurations
     versionConfigurations = {
-    "A": {
-        "name": "versionA",
-        "minimumDigits": 1,
-        "maximumDigits": 1,
-        "minimumDigitSize": 28,
-        "maximumDigitSize": 28,
-        "allowScaleVariation": False
-    },
-    "B": {
-        "name": "versionB",
-        "minimumDigits": 1,
-        "maximumDigits": 1,
-        "minimumDigitSize": 22,
-        "maximumDigitSize": 36,
-        "allowScaleVariation": True
-    },
-    "C": {
-        "name": "versionC",
-        "minimumDigits": 3,
-        "maximumDigits": 5,
-        "minimumDigitSize": 28,
-        "maximumDigitSize": 28,
-        "allowScaleVariation": False
-    },
-    "D": {
-        "name": "versionD",
-        "minimumDigits": 3,
-        "maximumDigits": 5,
-        "minimumDigitSize": 22,
-        "maximumDigitSize": 36,
-        "allowScaleVariation": True
+        "A": {
+            "name": "versionA",
+            "minimumDigits": 1,
+            "maximumDigits": 1,
+            "minimumDigitSize": 28,
+            "maximumDigitSize": 28,
+            "allowScaleVariation": False
+        },
+        "B": {
+            "name": "versionB",
+            "minimumDigits": 1,
+            "maximumDigits": 1,
+            "minimumDigitSize": 22,
+            "maximumDigitSize": 36,
+            "allowScaleVariation": True
+        },
+        "C": {
+            "name": "versionC",
+            "minimumDigits": 3,
+            "maximumDigits": 5,
+            "minimumDigitSize": 28,
+            "maximumDigitSize": 28,
+            "allowScaleVariation": False
+        },
+        "D": {
+            "name": "versionD",
+            "minimumDigits": 3,
+            "maximumDigits": 5,
+            "minimumDigitSize": 22,
+            "maximumDigitSize": 36,
+            "allowScaleVariation": True
+        }
     }
-}
-
 
     # Generate datasets for selected versions
     for versionKey in args.versions:
@@ -342,7 +347,6 @@ def main():
             maximumDigitSize=config["maximumDigitSize"],
             allowScaleVariation=config["allowScaleVariation"]
         )
-
 
 
 if __name__ == "__main__":

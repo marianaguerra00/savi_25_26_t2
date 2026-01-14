@@ -12,37 +12,65 @@ import cv2
 
 
 # -------------------------------------------------
+# Detection configuration 
+# -------------------------------------------------
+
+class DetectionConfig:
+    # Sliding window parameters
+    windowSize = 36
+    stride = 4
+
+    # Foreground filtering parameters
+    minForegroundRatio = 0.015        # Minimum ratio of active pixels
+    foregroundThreshold = 30          # Pixel intensity threshold
+    minMaxIntensityFactor = 2.0       # Std-based intensity threshold
+
+    # Model confidence filtering
+    confidenceThreshold = 0.6         # Minimum softmax confidence
+    confidenceMargin = 0.25           # Difference between top-1 and top-2
+    entropyThreshold = 1.5            # Maximum allowed entropy
+
+    # Border rejection parameters
+    borderMarginRatio = 0.05          # Margin as percentage of window size
+
+    # Debug flag
+    debug = False
+
+
+# Instantiate configuration
+cfg = DetectionConfig()
+
+
+# -------------------------------------------------
 # Utility functions for bounding box grouping
 # -------------------------------------------------
 
 def computeBoxCenter(box):
-    # Compute the center (cx, cy) of a bounding box
+    # Compute center coordinates of a bounding box
     x, y, w, h = box
     return x + w / 2, y + h / 2
 
 
 def groupBoundingBoxes(boxes, labels, distanceThreshold):
-    # Group nearby bounding boxes to remove duplicate detections
+    # Group overlapping bounding boxes based on center distance
     groups = []
 
     for box, label in zip(boxes, labels):
-        # Compute center of the current box
+        # Compute center of current bounding box
         cx, cy = computeBoxCenter(box)
         assigned = False
 
-        # Try to match the box with an existing group
+        # Try to assign the box to an existing group
         for group in groups:
             gcx, gcy = group["center"]
-
-            # Euclidean distance between centers
             distance = np.sqrt((cx - gcx)**2 + (cy - gcy)**2)
 
-            # If close enough, merge into the group
+            # Merge if distance is below threshold
             if distance < distanceThreshold:
                 group["boxes"].append(box)
                 group["labels"].append(label)
 
-                # Recompute group center as the mean of all box centers
+                # Update group center using mean of box centers
                 xs = [b[0] + b[2] / 2 for b in group["boxes"]]
                 ys = [b[1] + b[3] / 2 for b in group["boxes"]]
                 group["center"] = (np.mean(xs), np.mean(ys))
@@ -50,7 +78,7 @@ def groupBoundingBoxes(boxes, labels, distanceThreshold):
                 assigned = True
                 break
 
-        # If not assigned to any group, create a new group
+        # Create new group if not assigned
         if not assigned:
             groups.append({
                 "boxes": [box],
@@ -62,80 +90,90 @@ def groupBoundingBoxes(boxes, labels, distanceThreshold):
 
 
 def averageBoundingBox(boxes):
-    # Average multiple bounding boxes into a single box
-    xs = [b[0] for b in boxes]
-    ys = [b[1] for b in boxes]
-    ws = [b[2] for b in boxes]
-    hs = [b[3] for b in boxes]
-
-    return (
-        int(np.mean(xs)),
-        int(np.mean(ys)),
-        int(np.mean(ws)),
-        int(np.mean(hs))
-    )
+    # Compute average bounding box from a group of boxes
+    return tuple(map(int, np.mean(boxes, axis=0)))
 
 
 def majorityVote(labels):
-    # Return the most common label in the group
+    # Return the most frequent label in the group
     return max(set(labels), key=labels.count)
 
 
 # -------------------------------------------------
-# Load binary images
+# Image utilities
 # -------------------------------------------------
 
 def loadImagesFromUbyte(filePath, numberOfImages, imageSize):
-    # Load raw binary image data and reshape to (N, H, W)
+    # Load raw binary image data and reshape
     data = np.fromfile(filePath, dtype=np.uint8)
     return data.reshape(numberOfImages, imageSize, imageSize)
 
 
-# -------------------------------------------------
-# Sliding window generator
-# -------------------------------------------------
-
 def slidingWindow(image, windowSize, stride):
-    # Slide a window over the image and yield crops
-    height, width = image.shape
-
-    for y in range(0, height - windowSize + 1, stride):
-        for x in range(0, width - windowSize + 1, stride):
-            crop = image[y:y + windowSize, x:x + windowSize]
-            yield x, y, crop
+    # Generate sliding window crops over the image
+    h, w = image.shape
+    for y in range(0, h - windowSize + 1, stride):
+        for x in range(0, w - windowSize + 1, stride):
+            yield x, y, image[y:y + windowSize, x:x + windowSize]
 
 
 def mnistStyleResize(crop, threshold=40):
-    # Find foreground pixels using a threshold
+    # Extract foreground pixels
     ys, xs = np.where(crop > threshold)
 
-    # If no foreground pixels, fallback to direct resize
+    # Fallback if no foreground detected
     if len(xs) == 0:
         return cv2.resize(crop, (28, 28))
 
-    # Compute bounding box around the digit
-    xMin, xMax = xs.min(), xs.max()
-    yMin, yMax = ys.min(), ys.max()
-
-    digit = crop[yMin:yMax + 1, xMin:xMax + 1]
-
-    # Make the digit square by padding
+    # Crop bounding box around digit
+    digit = crop[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     h, w = digit.shape
     size = max(h, w)
 
+    # Pad digit to square shape
     padded = np.zeros((size, size), dtype=np.uint8)
-    yOffset = (size - h) // 2
-    xOffset = (size - w) // 2
-    padded[yOffset:yOffset + h, xOffset:xOffset + w] = digit
+    padded[(size - h)//2:(size - h)//2 + h,
+           (size - w)//2:(size - w)//2 + w] = digit
 
-    # Resize digit to 20x20 (MNIST format)
-    resizedDigit = cv2.resize(padded, (20, 20))
+    # Resize to MNIST digit size
+    resized = cv2.resize(padded, (20, 20))
 
-    # Place digit in the center of a 28x28 canvas
-    finalImage = np.zeros((28, 28), dtype=np.uint8)
-    finalImage[4:24, 4:24] = resizedDigit
+    # Center digit in 28x28 image
+    final = np.zeros((28, 28), dtype=np.uint8)
+    final[4:24, 4:24] = resized
+    return final
 
-    return finalImage
+
+# -------------------------------------------------
+# Window rejection logic (DECLARATIVE)
+# -------------------------------------------------
+
+def rejectWindow(crop):
+    # Reject window if max intensity is too low compared to local statistics
+    if np.max(crop) < np.mean(crop) + cfg.minMaxIntensityFactor * np.std(crop):
+        return True
+
+    # Reject window if foreground pixel ratio is too small
+    fgRatio = np.count_nonzero(crop > cfg.foregroundThreshold) / crop.size
+    if fgRatio < cfg.minForegroundRatio:
+        return True
+
+    # Extract foreground coordinates for border checking
+    ys, xs = np.where(crop > cfg.foregroundThreshold)
+    if len(xs) == 0:
+        return True
+
+    # Reject window if digit touches window border
+    margin = int(cfg.borderMarginRatio * crop.shape[0])
+    if (
+        xs.min() <= margin or
+        xs.max() >= crop.shape[1] - margin or
+        ys.min() <= margin or
+        ys.max() >= crop.shape[0] - margin
+    ):
+        return True
+
+    return False
 
 
 # -------------------------------------------------
@@ -143,28 +181,15 @@ def mnistStyleResize(crop, threshold=40):
 # -------------------------------------------------
 
 def main():
-    
+
     # Parse command-line arguments
-    parser = argparse.ArgumentParser("Sliding Window Digit Detection")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
-    parser.add_argument("--modelPath", required=False, default="./mnist_cnn.pth")
+    parser.add_argument("--modelPath", default="./mnist_cnn.pth")
     parser.add_argument("--numImages", type=int, default=20)
     args = parser.parse_args()
 
-    # -------------------------------------------------
-    # Configuration
-    # -------------------------------------------------
-
-    windowSize = 36              # Sliding window size
-    stride = 4                   # Step size between windows
-    confidenceThreshold = 0.5    # Minimum softmax confidence
-    imageSize = 128              # Input image resolution
-
-    # -------------------------------------------------
-    # Model
-    # -------------------------------------------------
-
-    # Select GPU if available
+    # Select computation device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load trained CNN model
@@ -172,105 +197,74 @@ def main():
     model.load_state_dict(torch.load(args.modelPath, map_location=device))
     model.eval()
 
-    # MNIST normalization
+    # Define MNIST normalization
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-    # -------------------------------------------------
-    # Load dataset
-    # -------------------------------------------------
-
-    # Build path to binary test images
+    # Build dataset path
     baseDir = os.path.dirname(os.path.abspath(__file__))
     binPath = os.path.join(
-        baseDir,
-        "..",
-        "improved_dataset",
-        args.version,
-        "test-images-ubyte.bin"
+        baseDir, "..", "improved_dataset",
+        args.version, "test-images-ubyte.bin"
     )
 
-    # Load images from binary file
-    images = loadImagesFromUbyte(binPath, 10000, imageSize)
-
-    # -------------------------------------------------
-    # Process multiple images
-    # -------------------------------------------------
+    # Load images
+    images = loadImagesFromUbyte(binPath, 10000, 128)
 
     results = []
 
-    for imageIndex in range(args.numImages):
-        image = images[imageIndex]
-
-        boxes = []
-        labels = []
+    # Process selected number of images
+    for idx in range(args.numImages):
+        image = images[idx]
+        boxes, labels = [], []
 
         # Run sliding window detection
-        for x, y, crop in slidingWindow(image, windowSize, stride):
+        for x, y, crop in slidingWindow(image, cfg.windowSize, cfg.stride):
 
-            # Skip dark or empty windows
-            if np.max(crop) < 25:
+            # Reject invalid windows
+            if rejectWindow(crop):
                 continue
 
-            if np.count_nonzero(crop > 30) < 25:
-                continue
+            # Resize crop to MNIST format
+            crop28 = mnistStyleResize(crop)
+            tensor = transform(crop28).unsqueeze(0).to(device)
 
-            # Extract foreground pixels
-            ys, xs = np.where(crop > 40)
-            if len(xs) == 0:
-                continue
-
-            # Reject crops touching window borders
-            if (
-                xs.min() <= 0 or
-                xs.max() >= crop.shape[1] - 1 or
-                ys.min() <= 0 or
-                ys.max() >= crop.shape[0] - 1
-            ):
-                continue
-
-            # Resize crop to MNIST-style input
-            processedCrop = mnistStyleResize(crop)
-            cropTensor = transform(processedCrop).unsqueeze(0).to(device)
-
-            # Run model inference
+            # Run inference
             with torch.no_grad():
-                logits = model(cropTensor)
-                probs = F.softmax(logits, dim=1)
+                probs = F.softmax(model(tensor), dim=1)
+                top2 = torch.topk(probs, 2).values.squeeze()
                 confidence, label = torch.max(probs, dim=1)
                 entropy = -torch.sum(probs * torch.log(probs + 1e-8))
 
             # Reject uncertain predictions
-            if entropy.item() > 1.5:
+            if entropy.item() > cfg.entropyThreshold:
                 continue
 
-            # Keep high-confidence detections
-            if confidence.item() > confidenceThreshold:
-                boxes.append((x, y, windowSize, windowSize))
-                labels.append(label.item())
+            if confidence.item() < cfg.confidenceThreshold:
+                continue
+
+            if (top2[0] - top2[1]).item() < cfg.confidenceMargin:
+                continue
+
+            # Store valid detection
+            boxes.append((x, y, cfg.windowSize, cfg.windowSize))
+            labels.append(label.item())
 
         # Group overlapping detections
         groups = groupBoundingBoxes(
-            boxes,
-            labels,
-            distanceThreshold=windowSize * 0.6
+            boxes, labels,
+            distanceThreshold=cfg.windowSize * 0.6
         )
 
-        finalBoxes = []
-        finalLabels = []
-
-        # Average boxes and vote labels per group
-        for group in groups:
-            finalBoxes.append(averageBoundingBox(group["boxes"]))
-            finalLabels.append(majorityVote(group["labels"]))
-
+        # Store final averaged results
         results.append({
             "image": image,
-            "boxes": finalBoxes,
-            "labels": finalLabels
+            "boxes": [averageBoundingBox(g["boxes"]) for g in groups],
+            "labels": [majorityVote(g["labels"]) for g in groups]
         })
+
 
     # -------------------------------------------------
     # MATLAB
@@ -282,7 +276,7 @@ def main():
     plt.subplots_adjust(bottom=0.2)
 
     def drawImage(index):
-        # Draw image and bounding boxes
+        # Display image and predicted bounding boxes
         ax.clear()
         ax.imshow(results[index]["image"], cmap="gray")
         ax.axis("off")
@@ -310,14 +304,14 @@ def main():
         fig.canvas.draw_idle()
 
     def nextImage(event):
-        # Go to next image
+        # Move to next image
         nonlocal currentIndex
         if currentIndex < len(results) - 1:
             currentIndex += 1
             drawImage(currentIndex)
 
     def previousImage(event):
-        # Go to previous image
+        # Move to previous image
         nonlocal currentIndex
         if currentIndex > 0:
             currentIndex -= 1

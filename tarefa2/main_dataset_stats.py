@@ -8,18 +8,24 @@ from matplotlib.widgets import Slider, Button
 # -------------------------------------------------
 # LOAD UBYTE IMAGES
 # -------------------------------------------------
+
 def loadImagesUbyte(filePath, numberOfImages, imageSize):
+    # Load raw uint8 image data from binary file
     data = np.fromfile(filePath, dtype=np.uint8)
     return data.reshape(numberOfImages, imageSize, imageSize)
+
 
 # -------------------------------------------------
 # LOAD UBYTE LABELS
 # -------------------------------------------------
+
 def loadLabelsUbyte(filePath):
+    # Load labels and bounding boxes from binary file
     annotationsPerImage = []
 
     with open(filePath, "rb") as file:
         while True:
+            # Read number of objects in the image
             numObjectsBytes = file.read(1)
             if not numObjectsBytes:
                 break
@@ -30,6 +36,7 @@ def loadLabelsUbyte(filePath):
 
             annotations = []
 
+            # Read each object annotation
             for _ in range(numObjects):
                 digitLabel = np.frombuffer(
                     file.read(1), dtype=np.uint8
@@ -47,11 +54,14 @@ def loadLabelsUbyte(filePath):
 
     return annotationsPerImage
 
+
 # -------------------------------------------------
 # VISUALIZATION Interface
 # -------------------------------------------------
+
 def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
 
+    # Mutable indices for callbacks
     currentImageIndex = [0]
     currentStatIndex = [0]
 
@@ -61,11 +71,11 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
     # LEFT SIDE (CONTENT)
     # --------------------
 
-    # IMAGE (TOP LEFT)
+    # Image display axis
     axImage = plt.axes([0.10, 0.55, 0.45, 0.4])
     axImage.axis("off")
 
-    # STATS (BOTTOM LEFT)
+    # Statistics display axis
     axStats = plt.axes([0.10, 0.10, 0.45, 0.35])
 
     # ---------------------------
@@ -82,14 +92,19 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
     axNextStat = plt.axes([buttonX, 0.30, buttonWidth, buttonHeight])
     axPrevStat = plt.axes([buttonX, 0.20, buttonWidth, buttonHeight])
     
+
     # ------------------
     # DRAW FUNCTIONS
     # ------------------
 
     def drawImage():
+        # Draw current image with bounding boxes
         axImage.clear()
         axImage.axis("off")
-        axImage.set_title(f"Image {currentImageIndex[0]} with Bounding Boxes", fontsize=13)
+        axImage.set_title(
+            f"Image {currentImageIndex[0]} with Bounding Boxes",
+            fontsize=13
+        )
 
         axImage.imshow(images[currentImageIndex[0]], cmap="gray")
 
@@ -103,10 +118,14 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
             axImage.add_patch(rect)
 
     def drawStats():
+        # Draw selected statistics plot
         axStats.clear()
 
         if currentStatIndex[0] == 0:
-            uniqueCounts, counts = np.unique(digitCounts, return_counts=True)
+            # Distribution of number of digits per image
+            uniqueCounts, counts = np.unique(
+                digitCounts, return_counts=True
+            )
             rel = counts / counts.sum()
 
             axStats.bar(uniqueCounts, rel, edgecolor="black", alpha=0.8)
@@ -116,6 +135,7 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
             axStats.set_xticks(uniqueCounts)
 
         elif currentStatIndex[0] == 1:
+            # Digit class distribution
             axStats.bar(range(10), classCounts, edgecolor="black", alpha=0.8)
             axStats.set_title("Digit class distribution")
             axStats.set_xlabel("Digit class")
@@ -123,6 +143,7 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
             axStats.set_xticks(range(10))
 
         elif currentStatIndex[0] == 2:
+            # Bounding box size distribution
             counts, bins = np.histogram(
                 boxSizes,
                 bins=range(min(boxSizes), max(boxSizes) + 2)
@@ -135,11 +156,14 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
 
         axStats.grid(True, linestyle="--", alpha=0.5)
 
+
     # ------------------------
     # INITIAL DRAW
     # ------------------------
+
     drawImage()
     drawStats()
+
 
     # ------------------------
     # BUTTONS
@@ -152,21 +176,27 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
     btnNextStat = Button(axNextStat, "Next stats")
 
     def onPrevImage(event):
+        # Show previous image
         currentImageIndex[0] = max(0, currentImageIndex[0] - 1)
         drawImage()
         fig.canvas.draw_idle()
 
     def onNextImage(event):
-        currentImageIndex[0] = min(len(images) - 1, currentImageIndex[0] + 1)
+        # Show next image
+        currentImageIndex[0] = min(
+            len(images) - 1, currentImageIndex[0] + 1
+        )
         drawImage()
         fig.canvas.draw_idle()
 
     def onPrevStat(event):
+        # Show previous statistics plot
         currentStatIndex[0] = (currentStatIndex[0] - 1) % 3
         drawStats()
         fig.canvas.draw_idle()
 
     def onNextStat(event):
+        # Show next statistics plot
         currentStatIndex[0] = (currentStatIndex[0] + 1) % 3
         drawStats()
         fig.canvas.draw_idle()
@@ -176,7 +206,6 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
     
     btnNextStat.on_clicked(onNextStat)
     btnPrevStat.on_clicked(onPrevStat)
-    
 
     plt.show()
 
@@ -187,21 +216,27 @@ def runInterface(images, annotations, digitCounts, classCounts, boxSizes):
 # -------------------------------------------------
 
 def computeStatistics(allAnnotations):
+    # Compute dataset statistics
     digitCounts = []
     classCounts = np.zeros(10)
     boxSizes = []
 
     for annotations in allAnnotations:
+        # Number of digits per image
         digitCounts.append(len(annotations))
 
         for digitLabel, x, y, w, h in annotations:
+            # Count digit classes
             classCounts[digitLabel] += 1
+
+            # Store bounding box size
             boxSizes.append(w)
 
     return digitCounts, classCounts, boxSizes
 
 
 def setupPlot(title, xlabel, ylabel):
+    # Configure plot appearance
     plt.title(title, fontsize=14)
     plt.xlabel(xlabel, fontsize=12)
     plt.ylabel(ylabel, fontsize=12)
@@ -239,7 +274,7 @@ def main():
     # Build dataset paths
     baseDirectory = os.path.dirname(os.path.abspath(__file__))
     versionDirectory = os.path.join(
-        baseDirectory, "..\improved_dataset", args.version
+        baseDirectory, "..\\improved_dataset", args.version
     )
 
     imageFile = os.path.join(
@@ -256,17 +291,17 @@ def main():
     numberOfImages = 60000 if args.split == "train" else 10000
     imageSize = 128
 
-    # Load data
+    # Load images and annotations
     images = loadImagesUbyte(
         imageFile, numberOfImages, imageSize
     )
 
     annotations = loadLabelsUbyte(labelFile)
 
-    # Compute statistics
+    # Compute dataset statistics
     digitCounts, classCounts, boxSizes = computeStatistics(annotations)
 
-    # Run interactive visualization
+    # Run interactive visualization (subset of images)
     runInterface(
         images=images[:50],
         annotations=annotations[:50],
@@ -274,7 +309,6 @@ def main():
         classCounts=classCounts,
         boxSizes=boxSizes
     )
-
 
 
 if __name__ == "__main__":
