@@ -9,7 +9,6 @@ savi_experiments/
 *.jpg
 *.json
 *.pkl
-*.pth
 *.bin
 
 # Ignorar configs do editor

@@ -96,7 +96,7 @@ def main():
     
     parser = argparse.ArgumentParser("Sliding Window Digit Detection")
     parser.add_argument("--version", required=True)
-    parser.add_argument("--modelPath", required=False, default = "../tarefa1/mnist_cnn.pth")
+    parser.add_argument("--modelPath", required=False, default = "./mnist_cnn.pth")
     parser.add_argument("--numImages", type=int, default=20)
     args = parser.parse_args()
 
