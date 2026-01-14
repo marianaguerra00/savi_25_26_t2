@@ -88,6 +88,37 @@ def slidingWindow(image, windowSize, stride):
             crop = image[y:y + windowSize, x:x + windowSize]
             yield x, y, crop
 
+def mnistStyleResize(crop, threshold=40):
+    # find foreground pixels
+    ys, xs = np.where(crop > threshold)
+
+    # if no foreground, fallback to simple resize
+    if len(xs) == 0:
+        return cv2.resize(crop, (28, 28))
+
+    # bounding box of the digit
+    xMin, xMax = xs.min(), xs.max()
+    yMin, yMax = ys.min(), ys.max()
+
+    digit = crop[yMin:yMax + 1, xMin:xMax + 1]
+
+    h, w = digit.shape
+    size = max(h, w)
+
+    # pad to square
+    padded = np.zeros((size, size), dtype=np.uint8)
+    yOffset = (size - h) // 2
+    xOffset = (size - w) // 2
+    padded[yOffset:yOffset + h, xOffset:xOffset + w] = digit
+
+    # resize digit region to 20x20 (MNIST style)
+    resizedDigit = cv2.resize(padded, (20, 20))
+
+    # place digit in center of 28x28 canvas
+    finalImage = np.zeros((28, 28), dtype=np.uint8)
+    finalImage[4:24, 4:24] = resizedDigit
+
+    return finalImage
 
 # -------------------------------------------------
 # Main
@@ -103,9 +134,9 @@ def main():
     # -------------------------------------------------
     # Configuration
     # -------------------------------------------------
-    windowSize = 36  
+    windowSize = 36
     stride = 4
-    confidenceThreshold = 0.9
+    confidenceThreshold = 0.6
     imageSize = 128
 
     # -------------------------------------------------
@@ -149,10 +180,10 @@ def main():
 
         for x, y, crop in slidingWindow(image, windowSize, stride):
 
-            if np.max(crop) < 40:
+            if np.max(crop) < 25:
                 continue
 
-            if np.count_nonzero(crop > 40) < 50:
+            if np.count_nonzero(crop > 30) < 25:
                 continue
 
             ys, xs = np.where(crop > 40)
@@ -160,15 +191,16 @@ def main():
                 continue
 
             if (
-                xs.min() <= 1 or
+                xs.min() <= 0 or
                 xs.max() >= crop.shape[1] - 1 or
-                ys.min() <= 1 or
+                ys.min() <= 0 or
                 ys.max() >= crop.shape[0] - 1
             ):
                 continue
 
-            resizedCrop = cv2.resize(crop, (28, 28))
-            cropTensor = transform(resizedCrop).unsqueeze(0).to(device)
+            processedCrop = mnistStyleResize(crop)
+            cropTensor = transform(processedCrop).unsqueeze(0).to(device)
+
 
 
             with torch.no_grad():
