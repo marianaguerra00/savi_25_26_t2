@@ -28,7 +28,6 @@ class DetectionConfig:
     # Model confidence filtering
     confidenceThreshold = 0.6         # Minimum softmax confidence
     confidenceMargin = 0.25           # Difference between top-1 and top-2
-    # entropyThreshold = 1.5           # Maximum allowed entropy
 
     # Border rejection parameters
     borderMarginRatio = 0.05          # Margin as percentage of window size
@@ -180,9 +179,9 @@ def main():
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--version", required=False, default= "versionD")
     parser.add_argument("--modelPath", default="./mnist_cnn.pth")
-    parser.add_argument("--numImages", type=int, default=20)
+    parser.add_argument("--numImages", type=int, default=30)
     args = parser.parse_args()
 
     # Select computation device
@@ -232,11 +231,7 @@ def main():
                 probs = F.softmax(model(tensor), dim=1)
                 top2 = torch.topk(probs, 2).values.squeeze()
                 confidence, label = torch.max(probs, dim=1)
-                entropy = -torch.sum(probs * torch.log(probs + 1e-8))
 
-            # Reject uncertain predictions
-            #if entropy.item() > cfg.entropyThreshold:
-                #continue
 
             if confidence.item() < cfg.confidenceThreshold:
                 continue
@@ -251,7 +246,7 @@ def main():
         # Group overlapping detections
         groups = groupBoundingBoxes(
             boxes, labels,
-            distanceThreshold=cfg.windowSize * 0.6
+            distanceThreshold=cfg.windowSize * 0.7
         )
 
         # Store final averaged results
