@@ -86,12 +86,22 @@ The visualization tool provides:
 - **Bounding boxes**: Red rectangles showing digit locations
 - Displays first 50 images from selected split
 
+    <img src="images\boundSize.png" width="200" alt="Description">
+
 ### Statistics Views
 Navigate between three statistical visualizations:
 
 1. **Number of digits per image**: Distribution showing how many digits appear in each image
 2. **Digit class distribution**: Frequency of each digit (0-9) across the dataset
 3. **Bounding box size distribution**: Histogram of digit sizes in pixels
+
+    <table>
+    <tr>
+        <td><img src="images\digitsperimage.png" width="400"></td>
+        <td><img src="images\digitClassDist.png" width="400"></td>
+        <td><img src="images\boxsize.png" width="400"></td>
+    </tr>
+    </table>
 
 ## Binary Format Specification
 
