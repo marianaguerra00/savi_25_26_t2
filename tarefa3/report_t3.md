@@ -84,8 +84,7 @@ iouThreshold = 0.3           # IoU threshold for matching
 7. **Evaluation**: Matches predictions to ground truth using IoU
 
 ## Visualization Interface
-
-![Detection Interface](images\slidingwindow.png)
+<img src="images\slidingwindow.png" width="600" alt="Description">
 
 ### Components
 
