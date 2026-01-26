@@ -5,7 +5,6 @@ __pycache__/
 # Ignorar Datasets e Resultados Pesados
 data/
 savi_experiments/
-*.png
 *.jpg
 *.json
 *.pkl
