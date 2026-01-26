@@ -1,0 +1,139 @@
+# MNIST Object Detection Dataset
+
+A synthetic dataset generator and visualization tool for creating MNIST-based object detection datasets with configurable complexity levels.
+
+## Overview
+
+This project provides tools to:
+- Generate custom MNIST object detection datasets with varying difficulty levels
+- Visualize generated datasets with interactive statistics
+- Export data in efficient binary format
+
+## Dataset Versions
+
+The generator supports four dataset versions with different characteristics:
+
+| Version | Digits per Image | Digit Size (pixels) | Scale Variation |
+|---------|------------------|---------------------|-----------------|
+| **A**   | 1                | 28 (fixed)          | No              |
+| **B**   | 1                | 22-36 (variable)    | Yes             |
+| **C**   | 3-5              | 28 (fixed)          | No              |
+| **D**   | 3-5              | 22-36 (variable)    | Yes             |
+
+All versions generate:
+- 60,000 training images
+- 10,000 test images
+- Image size: 128×128 pixels
+- Black background with white digits
+
+## Requirements
+
+```bash
+pip install torch torchvision numpy opencv-python matplotlib
+```
+
+## Usage
+
+### 1. Generate Dataset
+
+Generate one or more dataset versions:
+
+```bash
+# Generate default versions (B and D)
+python generate_dataset.py
+
+# Generate specific versions
+python generate_dataset.py --versions A B C D
+
+# Generate single version
+python generate_dataset.py --versions C
+```
+
+**Output structure:**
+```
+improved_dataset/
+├── versionA/
+│   ├── train-images-ubyte.bin
+│   ├── train-labels-ubyte.bin
+│   ├── test-images-ubyte.bin
+│   └── test-labels-ubyte.bin
+├── versionB/
+│   └── ...
+└── ...
+```
+
+### 2. Visualize and Analyze Dataset
+
+Launch the interactive visualization interface:
+
+```bash
+# Analyze training set
+python main_dataset_stats.py --version versionD --split train
+
+# Analyze test set
+python main_dataset_stats.py --version versionB --split test
+```
+
+**Available versions:** `versionA`, `versionB`, `versionC`, `versionD`  
+**Available splits:** `train`, `test`
+
+## Interactive Interface
+
+The visualization tool provides:
+
+### Image Navigation
+- **Next/Previous Image buttons**: Browse through dataset samples
+- **Bounding boxes**: Red rectangles showing digit locations
+- Displays first 50 images from selected split
+
+### Statistics Views
+Navigate between three statistical visualizations:
+
+1. **Number of digits per image**: Distribution showing how many digits appear in each image
+2. **Digit class distribution**: Frequency of each digit (0-9) across the dataset
+3. **Bounding box size distribution**: Histogram of digit sizes in pixels
+
+## Binary Format Specification
+
+### Images File (`*-images-ubyte.bin`)
+- Raw uint8 pixel values
+- Shape: `(num_images, 128, 128)`
+- No header, continuous data stream
+
+### Labels File (`*-labels-ubyte.bin`)
+For each image:
+1. **1 byte**: Number of objects (uint8)
+2. For each object:
+   - **1 byte**: Digit label (0-9, uint8)
+   - **8 bytes**: Bounding box (x, y, w, h as uint16)
+
+## Features
+
+### Dataset Generation
+- **Non-overlapping placement**: Digits never overlap
+- **Random positioning**: Uniform distribution across canvas
+- **Max blending**: Overlapping pixels use maximum intensity
+- **Configurable complexity**: Choose version based on task difficulty
+
+### Visualization
+- **Interactive exploration**: Navigate images and statistics
+- **Comprehensive statistics**: Three different analytical views
+- **Clean interface**: Matplotlib-based GUI with clear controls
+
+## Example Use Cases
+
+- **Version A**: Simple single-digit classification baseline
+- **Version B**: Scale-invariant single-digit detection
+- **Version C**: Multi-object detection with fixed scale
+- **Version D**: Complex multi-object detection with scale variation
+
+## Notes
+
+- Dataset generation may take several minutes depending on versions selected
+- Progress indicators show generation status every 1000 images
+- Bounding boxes are axis-aligned rectangles
+- Digit placement uses up to 100 attempts to avoid overlaps
+
+## Authors
+
+João Freitas & Mariana Guerra

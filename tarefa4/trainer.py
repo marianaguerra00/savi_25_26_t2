@@ -13,6 +13,11 @@ from sklearn.metrics import (
 )
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.widgets import Button
+import time
+import random
+
 
 
 class Trainer:
@@ -142,11 +147,19 @@ class Trainer:
 
         return np.mean(losses)
     
-    def evaluateFinal(self):
+    import time
+
+    def evaluateFinal(self, maxImagesToShow=50):
         self.model.eval()
+
+
+        allResults = []
 
         allTrueLabels = []
         allPredLabels = []
+        results = []
+
+        startTime = time.time()
 
         with torch.no_grad():
             for images, confT, classT, bboxT in self.testLoader:
@@ -156,49 +169,238 @@ class Trainer:
 
                 outputs = self.model(images)
 
-                classPred = outputs[:, 1:11]  # [B, 10, H, W]
-                confPred = torch.sigmoid(outputs[:, 0])  # [B, H, W]
+                confPred = torch.sigmoid(outputs[:, 0])   # [B, Gh, Gw]
+                classPred = outputs[:, 1:11]              # [B, 10, Gh, Gw]
+                bboxPred = outputs[:, 11:15]              # [B, 4, Gh, Gw]
 
-                # Only consider cells where an object exists
-                objectMask = confT > 0.5
+                B, Gh, Gw = confPred.shape
+                _, _, H, W = images.shape
 
-                if objectMask.sum() == 0:
-                    continue
+                cellW = W / Gw
+                cellH = H / Gh
 
-                classPredFlat = classPred.permute(0, 2, 3, 1)[objectMask]
-                classTrueFlat = classT[objectMask]
+                for b in range(B):
 
-                predictedLabels = torch.argmax(classPredFlat, dim=1)
+                    objectMask = confT[b] > 0.5
+                    if objectMask.sum() == 0:
+                        continue
 
-                allTrueLabels.extend(classTrueFlat.cpu().numpy())
-                allPredLabels.extend(predictedLabels.cpu().numpy())
+                    # -------- MÉTRICAS --------
+                    classPredFlat = classPred[b].permute(1, 2, 0)[objectMask]
+                    classTrueFlat = classT[b][objectMask]
+                    predictedLabels = torch.argmax(classPredFlat, dim=1)
 
-        # Metrics
+                    allTrueLabels.extend(classTrueFlat.cpu().numpy())
+                    allPredLabels.extend(predictedLabels.cpu().numpy())
+
+                    # -------- UI --------
+                    boxes = []
+                    labels = []
+                    gtLabels = []
+
+                    bboxFlat = bboxPred[b].permute(1, 2, 0)
+                    ys, xs = objectMask.nonzero(as_tuple=True)
+
+                    for (cy, cx), (tx, ty, tw, th), lbl, gtLbl in zip(
+                        zip(ys.cpu().numpy(), xs.cpu().numpy()),
+                        bboxFlat[objectMask].cpu().numpy(),
+                        predictedLabels.cpu().numpy(),
+                        classTrueFlat.cpu().numpy()
+                    ):
+                        
+                        x_center = (cx + tx) * cellW
+                        y_center = (cy + ty) * cellH
+
+                        w_px = tw * W
+                        h_px = th * H
+
+
+                        x = x_center - w_px / 2
+                        y = y_center - h_px / 2
+
+
+                        boxes.append((float(x), float(y), float(w_px), float(h_px)))
+                        labels.append(int(lbl))
+                        gtLabels.append(int(gtLbl))
+
+
+
+
+                    allResults.append({
+                        "image": images[b].cpu().squeeze().numpy(),
+                        "boxes": boxes,
+                        "labels": labels,
+                        "gtLabels": gtLabels
+                    })
+
+        random.shuffle(allResults)
+        results = allResults[:maxImagesToShow]
+
+        totalTime = time.time() - startTime
+
+        # -----------------------------------------
         accuracy = accuracy_score(allTrueLabels, allPredLabels)
         precision = precision_score(allTrueLabels, allPredLabels, average="macro")
         recall = recall_score(allTrueLabels, allPredLabels, average="macro")
         f1 = f1_score(allTrueLabels, allPredLabels, average="macro")
+        cm = confusion_matrix(allTrueLabels, allPredLabels)
+
 
         print("\nFINAL TEST RESULTS (10k images)")
         print(f"Accuracy : {accuracy:.4f}")
         print(f"Precision: {precision:.4f}")
         print(f"Recall   : {recall:.4f}")
         print(f"F1-score : {f1:.4f}")
+        print(f"Evaluation time: {totalTime:.2f} s")
 
-        print("\nClassification Report:")
-        print(classification_report(allTrueLabels, allPredLabels))
+        if len(results) == 0:
+            print("No images available for visualization.")
+            return
 
-        # Confusion Matrix
-        cm = confusion_matrix(allTrueLabels, allPredLabels)
 
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
-        plt.title("Confusion Matrix (Final Test)")
-        plt.tight_layout()
-        plt.savefig("confusion_matrix_final.png")
-        plt.close()
+        self.showEvaluationUI(accuracy, results, precision, recall, f1, totalTime, cm)
+
+    # -----------------------------
+    # Vizualization
+    # -----------------------------
+    def showEvaluationUI(self, accuracy, results, precision, recall, f1Score, totalTime, cm):
+
+        currentImageIndex = [0]
+        currentStatsIndex = [0]
+
+        fig = plt.figure(figsize=(9, 6))
+
+        axImage = fig.add_axes([0.17, 0.50, 0.40, 0.40])
+        axStats = fig.add_axes([0.08, 0.10, 0.6, 0.30])
+
+        axNextImg = fig.add_axes([0.72, 0.65, 0.25, 0.10])
+        axPrevImg = fig.add_axes([0.72, 0.53, 0.25, 0.10])
+        axNextStat = fig.add_axes([0.72, 0.25, 0.25, 0.10])
+        axPrevStat = fig.add_axes([0.72, 0.13, 0.25, 0.10])
+
+        fig.text(
+            0.98, 0.98,
+            f"Total processing time: {totalTime:.2f} s",
+            ha="right", va="top",
+            fontsize=10,
+            bbox=dict(facecolor="black", alpha=0.7),
+            color="white"
+        )
+
+        # -------- IMAGE --------
+        def drawImage():
+            axImage.clear()
+            data = results[currentImageIndex[0]]
+
+            axImage.imshow(data["image"], cmap="gray")
+            axImage.axis("off")
+
+
+            for (x, y, w, h), label, gtLabel in zip(
+                data["boxes"],
+                data["labels"],
+                data["gtLabels"]
+            ):
+                isCorrect = (label == gtLabel)
+                color = "lime" if isCorrect else "red"
+
+                axImage.add_patch(
+                    patches.Rectangle(
+                        (x, y), w, h,
+                        linewidth=2,
+                        edgecolor=color,
+                        facecolor="none"
+                    )
+                )
+
+                axImage.text(
+                    x + 2,
+                    y - 6 if y > 10 else y + h + 6,
+                    f"{label}",
+                    color="white",
+                    fontsize=6,
+                    bbox=dict(facecolor=color, alpha=0.85)
+                )
+
+
+            axImage.set_title(f"Image {currentImageIndex[0] + 1}")
+            fig.canvas.draw_idle()
+
+        # -------- METRICS --------
+        def drawMetrics():
+            axStats.clear()
+
+            values = [accuracy, precision, recall, f1Score]
+            labels = [
+                f"Accuracy {accuracy:.2f}",
+                f"Precision {precision:.2f}",
+                f"Recall {recall:.2f}",
+                f"F1 {f1Score:.2f}"
+            ]
+
+            axStats.bar(labels, values)
+            axStats.set_ylim(0, 1)
+            axStats.set_title("Final metrics (10k test)")
+
+            axImage.set_title(f"Image {currentImageIndex[0] + 1}")
+
+            fig.canvas.draw_idle()
+
+        def drawConfusionMatrix():
+            axStats.clear()
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt="d",
+                cmap="Blues",
+                ax=axStats,
+                cbar=False
+            )
+            axStats.set_title("Confusion Matrix (10k test)")
+            axStats.set_xlabel("Predicted")
+            axStats.set_ylabel("True")
+
+        statsFns = [drawMetrics, drawConfusionMatrix]
+
+
+        def drawStats():
+            statsFns[currentStatsIndex[0]]()
+            fig.canvas.draw_idle()
+
+        # -------- BUTTONS --------
+        def onNextImage(event):
+            currentImageIndex[0] = min(len(results) - 1, currentImageIndex[0] + 1)
+            drawImage()
+
+        def onPrevImage(event):
+            currentImageIndex[0] = max(0, currentImageIndex[0] - 1)
+            drawImage()
+
+        def onNextStats(event):
+            currentStatsIndex[0] = (currentStatsIndex[0] + 1) % len(statsFns)
+            drawStats()
+
+        def onPrevStats(event):
+            currentStatsIndex[0] = (currentStatsIndex[0] - 1) % len(statsFns)
+            drawStats()
+
+
+        btnNextImg = Button(axNextImg, "Next image")
+        btnPrevImg = Button(axPrevImg, "Previous image")
+
+        btnNextStat = Button(axNextStat, "Next stats")
+        btnPrevStat = Button(axPrevStat, "Previous stats")
+
+        btnNextImg.on_clicked(onNextImage)
+        btnPrevImg.on_clicked(onPrevImage)
+
+        btnNextStat.on_clicked(onNextStats)
+        btnPrevStat.on_clicked(onPrevStats)
+
+        drawImage()
+        drawStats()
+        plt.show()
+
 
     
     def plotLossCurves(self):
