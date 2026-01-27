@@ -163,12 +163,11 @@ def computeIoU(boxA, boxB):
 def matchDetections(predBoxes, predLabels, gtAnnotations, iouThreshold):
     """
     Match predictions to ground truth using IoU threshold.
-    Returns TP/FP/FN counts and classification data for matched detections.
+    Returns match info and classification data for matched detections.
     """
     matchedGT = set()
     matchedPred = {}
     predToGT = {}
-    tp = fp = 0
     allTrueLabels = []
     allPredLabels = []
     allIoUs = []
@@ -197,16 +196,8 @@ def matchDetections(predBoxes, predLabels, gtAnnotations, iouThreshold):
             # Track for classification metrics
             allTrueLabels.append(bestGTLabel)
             allPredLabels.append(pLabel)
-            
-            if correctClass:
-                tp += 1
-            else:
-                fp += 1
-        else:
-            fp += 1
 
-    fn = len(gtAnnotations) - len(matchedGT)
-    return tp, fp, fn, matchedPred, matchedGT, predToGT, allTrueLabels, allPredLabels, allIoUs
+    return matchedPred, matchedGT, predToGT, allTrueLabels, allPredLabels, allIoUs
 
 
 def detectImage(image, model, device, transform, windowSize, stride, 
@@ -495,7 +486,6 @@ def main():
     )
 
     results = []
-    tp = fp = fn = 0
     allTrueLabels = []
     allPredLabels = []
     allIoUs = []
@@ -513,13 +503,9 @@ def main():
             borderMarginRatio, confidenceThreshold, confidenceMargin, groupingDistance
         )
 
-        tpImg, fpImg, fnImg, matchedPred, matchedGT, predToGT, trueLabels, predLabels, ious = matchDetections(
+        matchedPred, matchedGT, predToGT, trueLabels, predLabels, ious = matchDetections(
             finalBoxes, finalLabels, gtAnnotations[idx], iouThreshold
         )
-
-        tp += tpImg
-        fp += fpImg
-        fn += fnImg
         
         allTrueLabels.extend(trueLabels)
         allPredLabels.extend(predLabels)

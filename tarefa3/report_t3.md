@@ -4,14 +4,14 @@ A real-time digit detection and evaluation system using a CNN-based sliding wind
 
 ## Overview
 
-This system detects handwritten digits in 128x128 images using a trained CNN model. It employs a sliding window technique with configurable detection parameters and provides comprehensive evaluation metrics with an interactive visualization interface that mirrors the FPN implementation for direct comparison.
+This system detects handwritten digits in 128x128 images using a trained CNN model. It employs a sliding window technique with configurable detection parameters.
 
 ## Features
 
 - **Sliding Window Detection**: Scans images with configurable window size and stride
 - **Smart Window Rejection**: Filters out empty or low-confidence regions
 - **Bounding Box Grouping**: Merges overlapping detections intelligently
-- **Comprehensive Evaluation**: Calculates precision, recall, and F1 score with IoU-based matching
+- **Comprehensive Evaluation**: Calculates detection accuracy score with IoU-based matching
 - **Interactive Visualization**: Browse detection results with ground truth comparison
 - **Dual Metric System**: Separate evaluation of localization quality and classification accuracy
 - **Confusion Matrix Analysis**: Per-class performance breakdown
@@ -125,17 +125,19 @@ Processing time : 979.41s (~98ms/image)
 
 ### Visualization Interface
 
-<table>
-    <tr>
-        <td><img src="images\classerror.png" width="400"></td>
-        <td><img src="images\locerror.png" width="400"></td>
-    </tr>
-    </table>
 The system provides an interactive interface to explore detection results with multiple metric views.
 
 ### Components
 
 **Image Display** (Top Section)
+
+<table>
+    <tr>
+        <td><img src="images\classerror.png" width="400"></td>
+        <td><img src="images\locerror.png" width="400"></td>
+    </tr>
+</table>
+
 - **Green boxes**: Correct detections (good IoU + correct class)
 - **Red boxes**: Incorrect detections (poor IoU OR wrong class)
 - **Blue dashed boxes**: Unmatched ground truth (False Negatives)
@@ -186,7 +188,7 @@ The interface provides three different metric visualizations accessible via "Nex
 
 The system provides a comprehensive evaluation with two complementary metric sets:
 
-### Localization Metrics (BBox Quality)
+#### Localization Metrics (BBox Quality)
 
 Evaluates spatial accuracy of bounding boxes:
 - **Mean IoU**: Average overlap between predicted and ground truth boxes
@@ -194,7 +196,7 @@ Evaluates spatial accuracy of bounding boxes:
 
 These metrics assess how well the system localizes digits, independent of classification.
 
-### Classification Metrics (Digit Recognition)
+#### Classification Metrics (Digit Recognition)
 
 Evaluates digit recognition accuracy for detected objects:
 - **Accuracy**: Overall classification correctness
@@ -203,15 +205,6 @@ Evaluates digit recognition accuracy for detected objects:
 - **F1 Score**: Harmonic mean of precision and recall
 
 These metrics only evaluate the classification quality, assuming localization is correct.
-
-### Combined Evaluation
-
-Detection matching uses IoU (Intersection over Union) with a configurable threshold:
-- Predictions matched to ground truth based on IoU
-- Classification correctness checked only for matched detections
-- Allows separate analysis of localization vs. recognition errors
-
-## Output Format
 
 ### Terminal Output
 
@@ -281,47 +274,10 @@ Predictions are matched to ground truth using:
 
 Typical performance on test dataset:
 - Processing time: ~15 minutes for 10,000 images (CPU)
-- Mean IoU: ~0.85
-- Detection Accuracy (IoU > 0.5): ~0.95
-- Classification Accuracy: ~0.97
-- Classification Precision/Recall/F1: ~0.96
-
-## Customization
-
-### Adjusting Detection Sensitivity
-
-**More Detections** (higher recall, lower precision):
-- Decrease `confidenceThreshold` (e.g., 0.5)
-- Decrease `confidenceMargin` (e.g., 0.15)
-- Decrease `foregroundThreshold` (e.g., 20)
-
-**Fewer False Positives** (higher precision, lower recall):
-- Increase `confidenceThreshold` (e.g., 0.8)
-- Increase `confidenceMargin` (e.g., 0.35)
-- Increase `minForegroundRatio` (e.g., 0.02)
-
-### Changing Detection Resolution
-
-- Smaller `stride`: More thorough scanning, slower processing
-- Larger `stride`: Faster processing, may miss small digits
-- Adjust `windowSize`: Must match digit size in images
-
-## Comparison with FPN Method
-
-This implementation provides an identical evaluation interface to the FPN (Feature Pyramid Network) approach, enabling direct comparison:
-
-### Shared Metrics
-- Same localization metrics (Mean IoU, Detection Acc)
-- Same classification metrics (Accuracy, Precision, Recall, F1)
-- Same confusion matrix visualization
-- Identical terminal output format
-
-### Key Differences
-- **Architecture**: Sliding window with CNN vs. grid-based FPN
-- **Speed**: Slower due to sequential window processing
-- **Approach**: Post-processing grouping vs. direct grid predictions
-- **Memory**: Lower memory footprint per image
-- **Scalability**: Better for varying image sizes
+- Mean IoU: ~0.625
+- Detection Accuracy (IoU > 0.5): ~0.70
+- Classification Accuracy: ~0.975
+- Classification F1: ~0.974
 
 ## Qualitative Analysis
 
@@ -366,30 +322,18 @@ This implementation provides an identical evaluation interface to the FPN (Featu
 
 ### Conclusion
 
-The system achieves strong performance (Mean IoU: 0.85, Classification F1: 0.96) through a robust but computationally intensive approach. The dual metric system (localization + classification) provides clear insights into different error sources.
+The system achieves strong performance (Mean IoU: 0.625, Classification F1: 0.974) through a robust but computationally intensive approach. The dual metric system (localization + classification) provides clear insights into different error sources.
 
 **Fundamental Trade-offs**:
 - **Speed vs. Coverage**: Dense scanning ensures detection but is expensive
 - **Precision vs. Recall**: Confidence filtering reduces noise but misses valid detections
 - **Flexibility vs. Optimization**: General approach works on various sizes but isn't optimized for fixed format
 
-**Best Use Cases**:
-- Offline batch processing where accuracy matters more than speed
-- Scenarios requiring interpretable detection pipeline
-- Systems needing to handle varying image sizes or aspect ratios
-- Educational purposes for understanding classical detection approaches
-
 **Not Recommended For**:
 - Real-time applications (use FPN or YOLO-style architectures instead)
 - Large-scale production systems (batch processing critical)
 - Scenarios requiring millisecond-level inference
 
-**Potential Improvements**:
-- Batch inference for window classification (10-100x speedup)
-- Multi-scale windows for better scale invariance
-- Learned confidence thresholding instead of fixed values
-- Integration with Non-Maximum Suppression (NMS) for better grouping
-- GPU acceleration for preprocessing steps
 
 ## Author
 
