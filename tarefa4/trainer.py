@@ -567,6 +567,7 @@ class ImprovedTrainer:
                 fmt="d",
                 cmap="Blues",
                 ax=axStats,
+                cbar=False
             )
             axStats.set_title("Confusion Matrix (Digit Classes)", fontweight='bold')
             axStats.set_xlabel("Predicted")
