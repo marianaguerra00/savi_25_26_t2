@@ -1,7 +1,7 @@
 import argparse
 import torch
 from dataset import getImprovedDatasets
-from model import ModelImprovedDetector, ModelImprovedDetectorV2, ModelImprovedDetectorLite
+from model import ModelImprovedDetector
 from trainer import ImprovedTrainer
 
 def main():
@@ -18,13 +18,6 @@ def main():
         help="train: train and test | test: test only with saved model"
     )
     
-    parser.add_argument(
-        "--model",
-        type=str,
-        choices=["lite", "v1", "v2"],
-        default="lite",
-        help="lite: Lightweight ~300K params | v1: FCN ~1.5M params | v2: ResNet ~2M params"
-    )
     
     parser.add_argument(
         "--modelPath",
@@ -67,7 +60,6 @@ def main():
     print("TAREFA 4: Integrated Detector and Classifier")
     print("="*60)
     print(f"Mode: {args.mode.upper()}")
-    print(f"Model: {args.model.upper()}")
     print(f"Batch size: {args.batchSize}")
     if args.mode == "train":
         print(f"Epochs: {args.numEpochs}")
@@ -85,18 +77,11 @@ def main():
     # ----------------------------
     # Create model
     # ----------------------------
-    print(f"Creating model ({args.model})...")
-    if args.model == "lite":
-        model = ModelImprovedDetectorLite(numClasses=10)
-        print("✓ Using Lightweight architecture (~300K params)")
-    elif args.model == "v1":
-        model = ModelImprovedDetector(numClasses=10)
-        print("✓ Using FCN with BatchNorm architecture (~1.5M params)")
-    else:
-        model = ModelImprovedDetectorV2(numClasses=10)
-        print("✓ Using ResNet-inspired architecture (~2M params)")
-    
-    print(f"✓ Parameters: {model.count_parameters():,}\n")
+    print(f"Creating model...")
+
+    model = ModelImprovedDetector(numClasses=10)
+    print("✓ Using Model (~100K params)")
+    print(f"✓ Parameters: {model.countParameters():,}\n")
     
     # ----------------------------
     # Create trainer

@@ -16,9 +16,10 @@ import matplotlib.patches as patches
 from matplotlib.widgets import Button
 import time
 import random
+import torch.nn.functional as F
 
 
-def calculate_iou(box1, box2):
+def calculateIoU(box1, box2):
     """
     Calculate IoU (Intersection over Union) between two boxes.
     
@@ -32,15 +33,15 @@ def calculate_iou(box1, box2):
     x2, y2, w2, h2 = box2
     
     # Calculate intersection
-    x_left = max(x1, x2)
-    y_top = max(y1, y2)
-    x_right = min(x1 + w1, x2 + w2)
-    y_bottom = min(y1 + h1, y2 + h2)
+    xLeft = max(x1, x2)
+    yTop = max(y1, y2)
+    xRight = min(x1 + w1, x2 + w2)
+    yBottom = min(y1 + h1, y2 + h2)
     
-    if x_right < x_left or y_bottom < y_top:
+    if xRight < xLeft or yBottom < yTop:
         return 0.0
     
-    intersection = (x_right - x_left) * (y_bottom - y_top)
+    intersection = (xRight - xLeft) * (yBottom - yTop)
     
     # Calculate union
     area1 = w1 * h1
@@ -55,12 +56,13 @@ def calculate_iou(box1, box2):
 
 class ImprovedTrainer:
     """
-    Trainer with improved loss balancing and bbox decoding.
+    FPN-based trainer with multi-scale loss and proper bbox handling.
     
-    Key improvements:
-    - Weighted losses (conf more important than bbox)
-    - Proper bbox coordinate decoding (offsets -> absolute coords)
-    - Better evaluation metrics
+    Key features:
+    - Multi-scale training (P3: 32x32, P4: 16x16)
+    - Weighted losses (conf, class, bbox)
+    - Detection metrics (IoU, detection accuracy)
+    - Learning rate scheduling
     """
     def __init__(self, model, trainDataset, testDataset, args):
         self.model = model
@@ -72,12 +74,12 @@ class ImprovedTrainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
 
-        # Loss functions with proper weighting
+        # Loss functions
         self.confLoss = nn.BCEWithLogitsLoss()
         self.classLoss = nn.CrossEntropyLoss(ignore_index=-1)
         self.bboxLoss = nn.MSELoss()
         
-        # Loss weights (confidence and class are more important)
+        # Loss weights
         self.confWeight = 2.0   # Higher weight for objectness
         self.classWeight = 1.5  # Higher weight for classification
         self.bboxWeight = 1.0   # Standard weight for bbox
@@ -85,7 +87,7 @@ class ImprovedTrainer:
         self.optimizer = optim.Adam(
             self.model.parameters(),
             lr=args["learningRate"],
-            weight_decay=1e-4  # Add regularization
+            weight_decay=1e-4
         )
         
         # Learning rate scheduler
@@ -117,112 +119,125 @@ class ImprovedTrainer:
         self.gridSize = 32
         self.cellSize = self.imageSize / self.gridSize
 
+    def computeLossSingleScale(self, outputs, confTarget, classTarget, bboxTarget):
+        """
+        Compute loss at a single scale.
+        
+        Args:
+            outputs: [B, 15, H, W] model predictions
+            confTarget: [B, H, W] confidence targets
+            classTarget: [B, H, W] class targets
+            bboxTarget: [B, 4, H, W] bbox targets
+        
+        Returns:
+            totalLoss: weighted sum of conf + class + bbox losses
+        """
+        # Split predictions
+        confPred = outputs[:, 0]           # [B, H, W]
+        classPred = outputs[:, 1:11]       # [B, 10, H, W]
+        bboxPred = outputs[:, 11:15]       # [B, 4, H, W] - already processed by model
+
+        # Confidence loss
+        lossConf = self.confLoss(confPred, confTarget) * self.confWeight
+
+        # Classification loss (only for cells with objects)
+        lossClass = self.classLoss(
+            classPred.permute(0, 2, 3, 1).reshape(-1, 10),
+            classTarget.view(-1)
+        ) * self.classWeight
+
+        # Bbox loss (only for cells with objects)
+        objectMask = confTarget > 0.5
+        if objectMask.sum() > 0:
+            bboxPredPerm = bboxPred.permute(0, 2, 3, 1)
+            bboxTargetPerm = bboxTarget.permute(0, 2, 3, 1)
+            lossBbox = self.bboxLoss(
+                bboxPredPerm[objectMask],
+                bboxTargetPerm[objectMask]
+            ) * self.bboxWeight
+        else:
+            lossBbox = torch.tensor(0.0, device=self.device)
+
+        return lossConf + lossClass + lossBbox
+
     def trainEpoch(self, epoch):
+        """Train for one epoch"""
         self.model.train()
         losses = []
-        confLosses = []
-        classLosses = []
-        bboxLosses = []
 
-        for images, confT, classT, bboxT in tqdm(
+        for images, confTarget, classTarget, bboxTarget in tqdm(
             self.trainLoader,
             desc=f"Train Epoch {epoch + 1}",
             leave=False
         ):
+            # Move data to device
             images = images.to(self.device)
-            confT = confT.to(self.device)
-            classT = classT.to(self.device)
-            bboxT = bboxT.to(self.device)
+            confTarget = confTarget.to(self.device)
+            classTarget = classTarget.to(self.device)
+            bboxTarget = bboxTarget.to(self.device)
 
-            outputs = self.model(images)
+            # Forward pass (FPN outputs)
+            outP3, outP4 = self.model(images)
 
-            # Split predictions
-            confPred = outputs[:, 0]           # [B, Gh, Gw]
-            classPred = outputs[:, 1:11]       # [B, 10, Gh, Gw]
-            bboxPred = outputs[:, 11:15]       # [B, 4, Gh, Gw]
+            # Compute loss at main scale (P3: 32x32)
+            lossP3 = self.computeLossSingleScale(
+                outP3, confTarget, classTarget, bboxTarget
+            )
 
-            # Confidence loss
-            lossConf = self.confLoss(confPred, confT) * self.confWeight
+            # Downsample targets for P4 (16x16)
+            confTargetP4 = F.max_pool2d(confTarget, 2)
+            classTargetP4 = F.max_pool2d(classTarget.float(), 2).long()
+            bboxTargetP4 = F.max_pool2d(bboxTarget, 2)
 
-            # Class loss (only for cells with objects)
-            lossClass = self.classLoss(
-                classPred.permute(0, 2, 3, 1).reshape(-1, 10),
-                classT.view(-1)
-            ) * self.classWeight
+            # Compute loss at secondary scale (P4: 16x16)
+            lossP4 = self.computeLossSingleScale(
+                outP4, confTargetP4, classTargetP4, bboxTargetP4
+            )
 
-            # BBox loss (only for cells with objects)
-            objectMask = confT > 0.5
-            if objectMask.sum() > 0:
-                bboxPredPerm = bboxPred.permute(0, 2, 3, 1)
-                bboxTPerm = bboxT.permute(0, 2, 3, 1)
-                lossBBox = self.bboxLoss(
-                    bboxPredPerm[objectMask],
-                    bboxTPerm[objectMask]
-                ) * self.bboxWeight
-            else:
-                lossBBox = torch.tensor(0.0, device=self.device)
+            # Combined weighted loss
+            loss = lossP3 + 0.7 * lossP4
 
-            # Total loss
-            loss = lossConf + lossClass + lossBBox
-
+            # Backpropagation
             self.optimizer.zero_grad()
             loss.backward()
-            
-            # Gradient clipping to prevent exploding gradients
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            
             self.optimizer.step()
 
             losses.append(loss.item())
-            confLosses.append(lossConf.item())
-            classLosses.append(lossClass.item())
-            bboxLosses.append(lossBBox.item())
 
-        print(f"  Conf: {np.mean(confLosses):.4f} | "
-              f"Class: {np.mean(classLosses):.4f} | "
-              f"BBox: {np.mean(bboxLosses):.4f}")
-        
         return np.mean(losses)
 
     def evaluate(self, epoch):
+        """Evaluate on validation set"""
         self.model.eval()
         losses = []
 
         with torch.no_grad():
-            for images, confT, classT, bboxT in tqdm(
+            for images, confTarget, classTarget, bboxTarget in tqdm(
                 self.testLoader,
                 desc=f"Validation Epoch {epoch + 1}",
                 leave=False
             ):
                 images = images.to(self.device)
-                confT = confT.to(self.device)
-                classT = classT.to(self.device)
-                bboxT = bboxT.to(self.device)
+                confTarget = confTarget.to(self.device)
+                classTarget = classTarget.to(self.device)
+                bboxTarget = bboxTarget.to(self.device)
 
-                outputs = self.model(images)
+                # Forward pass
+                outP3, outP4 = self.model(images)
 
-                confPred = outputs[:, 0]
-                classPred = outputs[:, 1:11]
-                bboxPred = outputs[:, 11:15]
+                # Multi-scale loss
+                lossP3 = self.computeLossSingleScale(
+                    outP3, confTarget, classTarget, bboxTarget
+                )
+                lossP4 = self.computeLossSingleScale(
+                    outP4,
+                    F.max_pool2d(confTarget, 2),
+                    F.max_pool2d(classTarget.float(), 2).long(),
+                    F.max_pool2d(bboxTarget, 2)
+                )
 
-                lossConf = self.confLoss(confPred, confT) * self.confWeight
-                lossClass = self.classLoss(
-                    classPred.permute(0, 2, 3, 1).reshape(-1, 10),
-                    classT.view(-1)
-                ) * self.classWeight
-
-                objectMask = confT > 0.5
-                if objectMask.sum() > 0:
-                    bboxPredPerm = bboxPred.permute(0, 2, 3, 1)
-                    bboxTPerm = bboxT.permute(0, 2, 3, 1)
-                    lossBBox = self.bboxLoss(
-                        bboxPredPerm[objectMask],
-                        bboxTPerm[objectMask]
-                    ) * self.bboxWeight
-                else:
-                    lossBBox = torch.tensor(0.0, device=self.device)
-
-                loss = lossConf + lossClass + lossBBox
+                loss = lossP3 + 0.7 * lossP4
                 losses.append(loss.item())
 
         return np.mean(losses)
@@ -233,18 +248,18 @@ class ImprovedTrainer:
         
         Args:
             gridY, gridX: grid cell indices
-            tx, ty: center offsets within cell (0-1)
-            tw, th: width/height normalized by image size (0-1)
+            tx, ty: center offsets within cell (can be any value)
+            tw, th: width/height normalized by image size (0-1, already sigmoid'd)
         
         Returns:
             x, y, w, h: absolute pixel coordinates
         """
         # Calculate absolute center
-        cell_left = gridX * self.cellSize
-        cell_top = gridY * self.cellSize
+        cellLeft = gridX * self.cellSize
+        cellTop = gridY * self.cellSize
         
-        cx = cell_left + tx * self.cellSize
-        cy = cell_top + ty * self.cellSize
+        cx = cellLeft + tx * self.cellSize
+        cy = cellTop + ty * self.cellSize
         
         # Calculate absolute width/height
         w = tw * self.imageSize
@@ -257,49 +272,57 @@ class ImprovedTrainer:
         return x, y, w, h
 
     def evaluateFinal(self, maxImagesToShow=50, confThreshold=0.5):
+        """
+        Final evaluation with metrics and visualization.
+        
+        Args:
+            maxImagesToShow: number of images to show in UI
+            confThreshold: confidence threshold for considering a detection
+        """
         self.model.eval()
 
         allResults = []
         allTrueLabels = []
         allPredLabels = []
-        
-        # Detection metrics
         allIoUs = []
-        detection_correct = 0  # IoU > 0.5
-        detection_total = 0
+        detectionCorrect = 0
+        detectionTotal = 0
 
         startTime = time.time()
 
         with torch.no_grad():
-            for images, confT, classT, bboxT in tqdm(self.testLoader, desc="Final Evaluation"):
+            for images, confTarget, classTarget, bboxTarget in tqdm(
+                self.testLoader, desc="Final Evaluation"
+            ):
                 images = images.to(self.device)
-                confT = confT.to(self.device)
-                classT = classT.to(self.device)
-                bboxT = bboxT.to(self.device)
+                confTarget = confTarget.to(self.device)
+                classTarget = classTarget.to(self.device)
+                bboxTarget = bboxTarget.to(self.device)
 
-                outputs = self.model(images)
+                # Forward pass - use P3 scale for evaluation
+                outP3, _ = self.model(images)
 
-                confPred = torch.sigmoid(outputs[:, 0])   # [B, Gh, Gw]
-                classPred = outputs[:, 1:11]              # [B, 10, Gh, Gw]
-                bboxPred = outputs[:, 11:15]              # [B, 4, Gh, Gw]
+                confPred = torch.sigmoid(outP3[:, 0])    # [B, H, W]
+                classPred = outP3[:, 1:11]               # [B, 10, H, W]
+                bboxPred = outP3[:, 11:15]               # [B, 4, H, W]
 
                 B = confPred.shape[0]
 
                 for b in range(B):
                     # Only evaluate cells with ground truth objects
-                    objectMask = confT[b] > 0.5
+                    objectMask = confTarget[b] > confThreshold
                     if objectMask.sum() == 0:
                         continue
 
                     # Classification metrics
                     classPredFlat = classPred[b].permute(1, 2, 0)[objectMask]
-                    classTrueFlat = classT[b][objectMask]
+                    classTrueFlat = classTarget[b][objectMask]
                     predictedLabels = torch.argmax(classPredFlat, dim=1)
 
                     allTrueLabels.extend(classTrueFlat.cpu().numpy())
                     allPredLabels.extend(predictedLabels.cpu().numpy())
 
-                    # Visualization data + Detection metrics
+                    # Visualization + detection metrics
                     boxes = []
                     labels = []
                     gtLabels = []
@@ -307,11 +330,11 @@ class ImprovedTrainer:
                     gtBoxes = []
 
                     bboxFlat = bboxPred[b].permute(1, 2, 0)
-                    bboxTrueFlat = bboxT[b].permute(1, 2, 0)
+                    bboxTrueFlat = bboxTarget[b].permute(1, 2, 0)
                     confFlat = confPred[b]
                     ys, xs = objectMask.nonzero(as_tuple=True)
 
-                    for (cy, cx), (tx, ty, tw, th), (tx_gt, ty_gt, tw_gt, th_gt), lbl, gtLbl in zip(
+                    for (cy, cx), (tx, ty, tw, th), (txGt, tyGt, twGt, thGt), lbl, gtLbl in zip(
                         zip(ys.cpu().numpy(), xs.cpu().numpy()),
                         bboxFlat[objectMask].cpu().numpy(),
                         bboxTrueFlat[objectMask].cpu().numpy(),
@@ -319,23 +342,28 @@ class ImprovedTrainer:
                         classTrueFlat.cpu().numpy()
                     ):
                         # Decode predicted bbox
-                        x_pred, y_pred, w_pred, h_pred = self.decodeBBox(cy, cx, tx, ty, tw, th)
-                        
-                        # Decode ground truth bbox
-                        x_gt, y_gt, w_gt, h_gt = self.decodeBBox(cy, cx, tx_gt, ty_gt, tw_gt, th_gt)
-                        
-                        # Calculate IoU
-                        iou = calculate_iou(
-                            (x_pred, y_pred, w_pred, h_pred),
-                            (x_gt, y_gt, w_gt, h_gt)
+                        xPred, yPred, wPred, hPred = self.decodeBBox(
+                            cy, cx, tx, ty, tw, th
                         )
+
+                        # Decode ground truth bbox
+                        xGt, yGt, wGt, hGt = self.decodeBBox(
+                            cy, cx, txGt, tyGt, twGt, thGt
+                        )
+
+                        # Calculate IoU
+                        iou = calculateIoU(
+                            (xPred, yPred, wPred, hPred),
+                            (xGt, yGt, wGt, hGt)
+                        )
+
                         allIoUs.append(iou)
-                        detection_total += 1
+                        detectionTotal += 1
                         if iou > 0.5:
-                            detection_correct += 1
-                        
-                        boxes.append((float(x_pred), float(y_pred), float(w_pred), float(h_pred)))
-                        gtBoxes.append((float(x_gt), float(y_gt), float(w_gt), float(h_gt)))
+                            detectionCorrect += 1
+
+                        boxes.append((float(xPred), float(yPred), float(wPred), float(hPred)))
+                        gtBoxes.append((float(xGt), float(yGt), float(wGt), float(hGt)))
                         labels.append(int(lbl))
                         gtLabels.append(int(gtLbl))
                         confidences.append(float(confFlat[cy, cx]))
@@ -349,36 +377,39 @@ class ImprovedTrainer:
                         "confidences": confidences
                     })
 
+        # Shuffle and limit results for visualization
         random.shuffle(allResults)
         results = allResults[:maxImagesToShow]
 
         totalTime = time.time() - startTime
 
-        # Calculate classification metrics
+        # Calculate metrics
         accuracy = accuracy_score(allTrueLabels, allPredLabels)
         precision = precision_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
         recall = recall_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
         f1 = f1_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
         cm = confusion_matrix(allTrueLabels, allPredLabels)
-        
-        # Calculate detection metrics
-        mean_iou = np.mean(allIoUs) if allIoUs else 0.0
-        detection_precision = detection_correct / detection_total if detection_total > 0 else 0.0
 
-        print("\n" + "="*50)
+        meanIoU = np.mean(allIoUs) if allIoUs else 0.0
+        detectionPrecision = (
+            detectionCorrect / detectionTotal if detectionTotal > 0 else 0.0
+        )
+
+        # Print results
+        print("\n" + "=" * 50)
         print("FINAL TEST RESULTS")
-        print("="*50)
+        print("=" * 50)
         print("Classification Metrics:")
         print(f"  Accuracy : {accuracy:.4f}")
         print(f"  Precision: {precision:.4f}")
         print(f"  Recall   : {recall:.4f}")
         print(f"  F1-score : {f1:.4f}")
         print("\nDetection Metrics:")
-        print(f"  Mean IoU        : {mean_iou:.4f}")
-        print(f"  Detection Acc   : {detection_precision:.4f} (IoU > 0.5)")
-        print(f"  Total detections: {detection_total}")
+        print(f"  Mean IoU        : {meanIoU:.4f}")
+        print(f"  Detection Acc   : {detectionPrecision:.4f} (IoU > 0.5)")
+        print(f"  Total detections: {detectionTotal}")
         print(f"\nEvaluation time: {totalTime:.2f} s")
-        print("="*50)
+        print("=" * 50)
 
         if len(results) == 0:
             print("No images available for visualization.")
@@ -386,11 +417,12 @@ class ImprovedTrainer:
 
         self.showEvaluationUI(
             accuracy, results, precision, recall, f1, totalTime, cm,
-            mean_iou, detection_precision
+            meanIoU, detectionPrecision
         )
 
-    def showEvaluationUI(self, accuracy, results, precision, recall, f1Score, totalTime, cm, mean_iou, detection_precision):
-        """Interactive visualization of results"""
+    def showEvaluationUI(self, accuracy, results, precision, recall, f1Score, 
+                        totalTime, cm, meanIoU, detectionPrecision):
+        """Interactive visualization UI"""
         currentImageIndex = [0]
         currentStatsIndex = [0]
 
@@ -420,11 +452,11 @@ class ImprovedTrainer:
             axImage.imshow(data["image"], cmap="gray")
             axImage.axis("off")
 
-            # Draw ground truth boxes in blue (dashed)
-            for (x_gt, y_gt, w_gt, h_gt) in data["gtBoxes"]:
+            # Draw ground truth boxes (blue dashed)
+            for (xGt, yGt, wGt, hGt) in data["gtBoxes"]:
                 axImage.add_patch(
                     patches.Rectangle(
-                        (x_gt, y_gt), w_gt, h_gt,
+                        (xGt, yGt), wGt, hGt,
                         linewidth=1.5,
                         edgecolor="blue",
                         facecolor="none",
@@ -433,15 +465,14 @@ class ImprovedTrainer:
                 )
 
             # Draw predicted boxes
-            for (x, y, w, h), label, gtLabel, conf, (x_gt, y_gt, w_gt, h_gt) in zip(
+            for (x, y, w, h), label, gtLabel, conf, (xGt, yGt, wGt, hGt) in zip(
                 data["boxes"],
                 data["labels"],
                 data["gtLabels"],
                 data["confidences"],
                 data["gtBoxes"]
             ):
-                # Calculate IoU for this box
-                iou = calculate_iou((x, y, w, h), (x_gt, y_gt, w_gt, h_gt))
+                iou = calculateIoU((x, y, w, h), (xGt, yGt, wGt, hGt))
                 
                 isCorrect = (label == gtLabel)
                 color = "lime" if isCorrect else "red"
@@ -471,14 +502,13 @@ class ImprovedTrainer:
             fig.canvas.draw_idle()
 
         def drawDetectionMetrics():
-            """NEW: Detection metrics as index 0"""
+            """Index 0: Detection metrics"""
             axStats.clear()
             
-            # Detection metrics
-            metrics = [mean_iou, detection_precision]
+            metrics = [meanIoU, detectionPrecision]
             labels = [
-                f"Mean IoU\n{mean_iou:.3f}",
-                f"Detection Acc\n{detection_precision:.3f}\n(IoU > 0.5)"
+                f"Mean IoU\n{meanIoU:.3f}",
+                f"Detection Acc\n{detectionPrecision:.3f}\n(IoU > 0.5)"
             ]
             colors = ['#3498db', '#2ecc71']
             
@@ -487,21 +517,19 @@ class ImprovedTrainer:
             axStats.set_title("Detection Metrics (BBox Quality)", fontweight='bold')
             axStats.grid(True, alpha=0.3, axis='y')
             
-            # Add value labels on bars
             for bar in bars:
                 height = bar.get_height()
                 axStats.text(bar.get_x() + bar.get_width()/2., height + 0.02,
                            f'{height:.3f}',
                            ha='center', va='bottom', fontsize=10, fontweight='bold')
             
-            # Add explanation text
             axStats.text(0.5, -0.15, 
                         "IoU measures bbox overlap | Detection Acc = % boxes with IoU > 0.5",
                         ha='center', va='top', transform=axStats.transAxes,
                         fontsize=8, style='italic', color='gray')
 
         def drawClassificationMetrics():
-            """Classification metrics as index 1"""
+            """Index 1: Classification metrics"""
             axStats.clear()
             values = [accuracy, precision, recall, f1Score]
             labels = [
@@ -516,7 +544,6 @@ class ImprovedTrainer:
             axStats.set_title("Classification Metrics (Digit Recognition)", fontweight='bold')
             axStats.grid(True, alpha=0.3, axis='y')
             
-            # Add value labels on bars
             for bar in bars:
                 height = bar.get_height()
                 axStats.text(bar.get_x() + bar.get_width()/2., height + 0.02,
@@ -524,7 +551,7 @@ class ImprovedTrainer:
                            ha='center', va='bottom', fontsize=9, fontweight='bold')
 
         def drawConfusionMatrix():
-            """Confusion matrix as index 2"""
+            """Index 2: Confusion matrix"""
             axStats.clear()
             sns.heatmap(
                 cm,
@@ -539,7 +566,6 @@ class ImprovedTrainer:
             axStats.set_xlabel("Predicted")
             axStats.set_ylabel("True")
 
-        # INDEX 0 = Detection, INDEX 1 = Classification, INDEX 2 = Confusion Matrix
         statsFns = [drawDetectionMetrics, drawClassificationMetrics, drawConfusionMatrix]
 
         def drawStats():
@@ -577,12 +603,14 @@ class ImprovedTrainer:
         plt.show()
 
     def plotLossCurves(self):
-        """Plot training and validation loss curves"""
+        """Plot and save loss curves"""
         epochs = range(1, len(self.trainLossHistory) + 1)
 
         plt.figure(figsize=(10, 6))
-        plt.plot(epochs, self.trainLossHistory, "b-o", label="Train Loss", linewidth=2, markersize=5)
-        plt.plot(epochs, self.testLossHistory, "r-s", label="Val Loss", linewidth=2, markersize=5)
+        plt.plot(epochs, self.trainLossHistory, "b-o", label="Train Loss", 
+                linewidth=2, markersize=5)
+        plt.plot(epochs, self.testLossHistory, "r-s", label="Val Loss", 
+                linewidth=2, markersize=5)
 
         plt.xlabel("Epoch", fontsize=12)
         plt.ylabel("Loss", fontsize=12)
