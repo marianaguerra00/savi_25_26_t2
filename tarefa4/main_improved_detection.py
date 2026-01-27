@@ -22,7 +22,7 @@ def main():
     parser.add_argument(
         "--modelPath",
         type=str,
-        default="final_model.pth",
+        default="best_model.pth",
         help="Path to saved model (for test mode)"
     )
     

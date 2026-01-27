@@ -507,8 +507,8 @@ class ImprovedTrainer:
             
             metrics = [meanIoU, detectionPrecision]
             labels = [
-                f"Mean IoU\n{meanIoU:.3f}",
-                f"Detection Acc\n{detectionPrecision:.3f}\n(IoU > 0.5)"
+                f"Mean IoU",
+                f"Detection Acc (IoU > 0.5)"
             ]
             colors = ['#3498db', '#2ecc71']
             
@@ -520,10 +520,11 @@ class ImprovedTrainer:
             for bar in bars:
                 height = bar.get_height()
                 axStats.text(bar.get_x() + bar.get_width()/2., height + 0.02,
-                           f'{height:.3f}',
-                           ha='center', va='bottom', fontsize=10, fontweight='bold')
+                        f'{height:.3f}',
+                        ha='center', va='bottom', fontsize=10, fontweight='bold')
             
-            axStats.text(0.5, -0.15, 
+            # FIX: Centrar o texto (era 0.10, agora 0.50)
+            axStats.text(0.50, -0.15,  # Mudou de 0.10 para 0.50
                         "IoU measures bbox overlap | Detection Acc = % boxes with IoU > 0.5",
                         ha='center', va='top', transform=axStats.transAxes,
                         fontsize=8, style='italic', color='gray')
@@ -540,15 +541,22 @@ class ImprovedTrainer:
             ]
             colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
             bars = axStats.bar(labels, values, color=colors, alpha=0.7)
-            axStats.set_ylim(0, 1)
-            axStats.set_title("Classification Metrics (Digit Recognition)", fontweight='bold')
+            
+            # FIX: Aumenta o ylim para dar espaço ao título
+            axStats.set_ylim(0, 1.05)  # Era 1, agora 1.05
+            
+            axStats.set_title("Classification Metrics (Digit Recognition)", 
+                            fontweight='bold', 
+                            pad=15)  # Adiciona padding ao título
             axStats.grid(True, alpha=0.3, axis='y')
             
+            # FIX: Ajusta a posição do texto para não colidir
             for bar in bars:
                 height = bar.get_height()
-                axStats.text(bar.get_x() + bar.get_width()/2., height + 0.02,
-                           f'{height:.3f}',
-                           ha='center', va='bottom', fontsize=9, fontweight='bold')
+                axStats.text(bar.get_x() + bar.get_width()/2., 
+                        height + 0.01,  # Reduz de 0.02 para 0.01
+                        f'{height:.3f}',
+                        ha='center', va='bottom', fontsize=9, fontweight='bold')
 
         def drawConfusionMatrix():
             """Index 2: Confusion matrix"""
@@ -559,8 +567,6 @@ class ImprovedTrainer:
                 fmt="d",
                 cmap="Blues",
                 ax=axStats,
-                cbar=True,
-                square=True
             )
             axStats.set_title("Confusion Matrix (Digit Classes)", fontweight='bold')
             axStats.set_xlabel("Predicted")
@@ -655,6 +661,3 @@ class ImprovedTrainer:
         
         self.plotLossCurves()
         self.evaluateFinal()
-
-        torch.save(self.model.state_dict(), "final_model.pth")
-        print("\nFinal model saved as 'final_model.pth'")
