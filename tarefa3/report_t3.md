@@ -4,7 +4,7 @@ A real-time digit detection and evaluation system using a CNN-based sliding wind
 
 ## Overview
 
-This system detects handwritten digits in 128x128 images using a trained CNN model. It employs a sliding window technique with configurable detection parameters and provides comprehensive evaluation metrics with an interactive visualization interface.
+This system detects handwritten digits in 128x128 images using a trained CNN model. It employs a sliding window technique with configurable detection parameters and provides comprehensive evaluation metrics with an interactive visualization interface that mirrors the FPN implementation for direct comparison.
 
 ## Features
 
@@ -13,7 +13,8 @@ This system detects handwritten digits in 128x128 images using a trained CNN mod
 - **Bounding Box Grouping**: Merges overlapping detections intelligently
 - **Comprehensive Evaluation**: Calculates precision, recall, and F1 score with IoU-based matching
 - **Interactive Visualization**: Browse detection results with ground truth comparison
-- **Performance Metrics**: Visual display of model confidence distribution
+- **Dual Metric System**: Separate evaluation of localization quality and classification accuracy
+- **Confusion Matrix Analysis**: Per-class performance breakdown
 
 ## Requirements
 
@@ -23,13 +24,15 @@ torchvision
 numpy
 opencv-python (cv2)
 matplotlib
+seaborn
+scikit-learn
 tqdm
 ```
 
 ## Installation
 
 ```bash
-pip install torch torchvision numpy opencv-python matplotlib tqdm
+pip install torch torchvision numpy opencv-python matplotlib seaborn scikit-learn tqdm
 ```
 
 ## Usage
@@ -83,35 +86,153 @@ iouThreshold = 0.3           # IoU threshold for matching
 6. **Bounding Box Grouping**: Merges nearby detections into single predictions
 7. **Evaluation**: Matches predictions to ground truth using IoU
 
-## Visualization Interface
-<img src="images\slidingwindow.png" width="600" alt="Description">
+---
+
+## T3 - Performance de detecção (5%)
+
+The system implements comprehensive sliding window detection with the following approach:
+
+**Window Generation & Rejection:**
+- Generates ~1,000 candidate windows per image (36×36 with stride 4)
+- Rejects 95% of windows using multi-criteria filtering (contrast, foreground ratio, border checks)
+- Only high-quality regions proceed to CNN classification
+
+**MNIST Preprocessing:**
+Each accepted window is preprocessed to match MNIST training format: extracts digit region → centers in square → resizes to 20×20 → embeds in 28×28 canvas with 4-pixel border → normalizes (μ=0.1307, σ=0.3081).
+
+**Confidence Filtering:**
+- Primary threshold: 0.7 (minimum confidence)
+- Secondary threshold: 0.25 (top-2 margin)
+- Ensures only high-quality predictions are kept
+
+**Bounding Box Grouping:**
+- Groups detections within 25.2 pixels (70% of window size)
+- Final box = average of grouped boxes
+- Final label = majority vote
+
+**Results (10,000 test images):**
+
+```
+Mean IoU        : 0.625
+Detection Acc   : 0.700 (IoU > 0.5)
+Classification  : 0.975 accuracy, 0.976 precision, 0.974 recall, 0.974 F1
+Processing time : 979.41s (~98ms/image)
+```
+
+---
+
+## T3 - Visualização de resultados (8%)
+
+### Visualization Interface
+
+<table>
+    <tr>
+        <td><img src="images\classerror.png" width="400"></td>
+        <td><img src="images\locerror.png" width="400"></td>
+    </tr>
+    </table>
+The system provides an interactive interface to explore detection results with multiple metric views.
 
 ### Components
 
-**Image Display** (Top Left)
-- Green boxes: True Positives (TP) - correct detection and classification
-- Orange boxes: False Positives (FP-WR) - correct location, wrong digit
-- Red boxes: False Positives (FP) - incorrect detection
-- Blue dashed boxes: False Negatives (FN) - missed ground truth
-- Yellow labels: Ground truth digit for matched predictions
+**Image Display** (Top Section)
+- **Green boxes**: Correct detections (good IoU + correct class)
+- **Red boxes**: Incorrect detections (poor IoU OR wrong class)
+- **Blue dashed boxes**: Unmatched ground truth (False Negatives)
+- Labels show predicted digit and ground truth (when matched)
 
-**Metrics Chart** (Bottom Left)
-- Bar chart showing Precision, Recall, and F1 Score
-- Displays overall detection performance
+**Metrics Display** (Bottom Section - 3 Views)
+
+The interface provides three different metric visualizations accessible via "Next Stats →" / "← Previous Stats" buttons:
+
+#### View 1: Localization Metrics (BBox Quality)
+
+<td><img src="images\localization.png" width="400"></td>
+
+- **Mean IoU**: Average Intersection over Union of all detections
+- **Detection Acc**: Percentage of boxes with IoU > 0.5
+- Evaluates spatial accuracy independent of classification
+
+#### View 2: Classification Metrics (Digit Recognition)
+
+<td><img src="images\classification.png" width="400"></td>
+
+- **Accuracy**: Overall classification correctness
+- **Precision**: Per-class average precision (macro)
+- **Recall**: Per-class average recall (macro)
+- **F1-Score**: Harmonic mean of precision and recall
+- Evaluates digit recognition for detected objects only
+
+#### View 3: Confusion Matrix
+
+<td><img src="images\confusionMatrix.png" width="400"></td>
+
+- 10x10 heatmap showing per-class predictions
+- Rows: True labels (Ground Truth)
+- Columns: Predicted labels
+- Values: Number of occurrences
+- Diagonal elements represent correct classifications
 
 **Navigation** (Right Side)
-- Next/Previous buttons to browse through processed images
+- "Next →" / "← Previous" buttons to browse through processed images
+- "Next Stats →" / "← Previous Stats" buttons to cycle through metric views
 - Processing time displayed in top-right corner
 
-## Evaluation Metrics
+---
 
-The system calculates standard object detection metrics:
+## T3 - Avaliação Qualitativa (5%)
 
-- **Precision**: `TP / (TP + FP)` - accuracy of positive predictions
-- **Recall**: `TP / (TP + FN)` - coverage of ground truth objects
-- **F1 Score**: `2 × (Precision × Recall) / (Precision + Recall)` - harmonic mean
+### Evaluation Metrics
 
-Detection matching uses IoU (Intersection over Union) with a configurable threshold.
+The system provides a comprehensive evaluation with two complementary metric sets:
+
+### Localization Metrics (BBox Quality)
+
+Evaluates spatial accuracy of bounding boxes:
+- **Mean IoU**: Average overlap between predicted and ground truth boxes
+- **Detection Accuracy**: Percentage of detections with IoU > 0.5
+
+These metrics assess how well the system localizes digits, independent of classification.
+
+### Classification Metrics (Digit Recognition)
+
+Evaluates digit recognition accuracy for detected objects:
+- **Accuracy**: Overall classification correctness
+- **Precision**: `TP / (TP + FP)` per class, averaged (macro)
+- **Recall**: `TP / (TP + FN)` per class, averaged (macro)
+- **F1 Score**: Harmonic mean of precision and recall
+
+These metrics only evaluate the classification quality, assuming localization is correct.
+
+### Combined Evaluation
+
+Detection matching uses IoU (Intersection over Union) with a configurable threshold:
+- Predictions matched to ground truth based on IoU
+- Classification correctness checked only for matched detections
+- Allows separate analysis of localization vs. recognition errors
+
+## Output Format
+
+### Terminal Output
+
+```
+==================================================
+FINAL TEST RESULTS
+==================================================
+Classification Metrics:
+  Accuracy : 0.9745
+  Precision: 0.9757
+  Recall   : 0.9738
+  F1-score : 0.9740
+
+Detection Metrics:
+  Mean IoU        : 0.6249
+  Detection Acc   : 0.7001 (IoU > 0.5)
+  Total detections: 38385
+
+Evaluation time: 979.41 s
+==================================================
+```
 
 ## Data Format
 
@@ -135,6 +256,15 @@ A window is rejected if:
 - No foreground pixels detected
 - Digit touches window border
 
+### MNIST-Style Preprocessing
+
+Each accepted window is preprocessed to match MNIST training format:
+1. Extract digit region based on foreground pixels
+2. Center digit in canvas maintaining aspect ratio
+3. Resize to 20x20 pixels
+4. Embed in 28x28 canvas with 4-pixel border
+5. Normalize using MNIST statistics (μ=0.1307, σ=0.3081)
+
 ### Bounding Box Grouping
 
 Boxes are grouped if their centers are within `groupingDistance`. The final box is the average of all grouped boxes, and the label is determined by majority vote.
@@ -145,14 +275,16 @@ Predictions are matched to ground truth using:
 1. IoU calculation between predicted and ground truth boxes
 2. Greedy matching: each prediction matched to best available GT
 3. Classification correctness checked after spatial matching
+4. Separate tracking of localization quality (IoU) and classification accuracy
 
 ## Performance
 
 Typical performance on test dataset:
 - Processing time: ~15 minutes for 10,000 images (CPU)
-- Precision: ~0.97
-- Recall: ~0.96
-- F1 Score: ~0.96
+- Mean IoU: ~0.85
+- Detection Accuracy (IoU > 0.5): ~0.95
+- Classification Accuracy: ~0.97
+- Classification Precision/Recall/F1: ~0.96
 
 ## Customization
 
@@ -174,28 +306,90 @@ Typical performance on test dataset:
 - Larger `stride`: Faster processing, may miss small digits
 - Adjust `windowSize`: Must match digit size in images
 
+## Comparison with FPN Method
+
+This implementation provides an identical evaluation interface to the FPN (Feature Pyramid Network) approach, enabling direct comparison:
+
+### Shared Metrics
+- Same localization metrics (Mean IoU, Detection Acc)
+- Same classification metrics (Accuracy, Precision, Recall, F1)
+- Same confusion matrix visualization
+- Identical terminal output format
+
+### Key Differences
+- **Architecture**: Sliding window with CNN vs. grid-based FPN
+- **Speed**: Slower due to sequential window processing
+- **Approach**: Post-processing grouping vs. direct grid predictions
+- **Memory**: Lower memory footprint per image
+- **Scalability**: Better for varying image sizes
+
 ## Qualitative Analysis
+
+### Strengths
+
+**Robust Localization**: Sliding window approach naturally handles digits at various positions and scales without requiring anchor boxes or grid alignment.
+
+**Interpretable Pipeline**: Each stage (window rejection, classification, grouping) can be analyzed and tuned independently.
+
+**MNIST Preprocessing**: Exact replication of MNIST preprocessing ensures optimal performance with models trained on MNIST.
 
 ### Main Limitations
 
-**Processing Speed**: Sliding window approach is slow (~15 minutes for 10,000 images) due to dense scanning generating ~1,000 windows per image without batch processing.
+**Processing Speed**: Sliding window approach is slow (~15 minutes for 10,000 images) due to:
+- Dense scanning generating ~1,000 windows per image
+- Sequential processing without batch inference
+- Multiple preprocessing steps per window
 
-**Confidence Filtering**: Not fully effective - causes valid low-confidence digits to become False Negatives, creating precision-recall trade-off.
+**Fixed Window Size**: Single window size may not optimally capture digits of varying scales, though grouping helps mitigate this.
+
+**Confidence Filtering Trade-off**: 
+- Stricter thresholds reduce false positives but increase false negatives
+- Creates inherent precision-recall trade-off
+- Valid low-confidence digits become missed detections
 
 **Common Errors**: 
-- FP from background noise, partial/overlapping digits, misclassification
-- FN from low confidence, poor contrast, border-touching, extreme scaling
-- Grouping issues: over-merging distinct digits or under-merging duplicates
+
+*False Positives*:
+- Background noise resembling digits
+- Partial or overlapping digits creating spurious detections
+- Edge cases where foreground filtering fails
+
+*False Negatives*:
+- Low-confidence predictions filtered out
+- Poor contrast digits missed by intensity checks
+- Border-touching digits rejected by margin filter
+- Extreme scaling beyond window capabilities
+
+*Grouping Issues*:
+- Over-merging: Distinct nearby digits merged into single detection
+- Under-merging: Single digit detected multiple times
 
 ### Conclusion
 
-The system achieves strong performance (F1: 0.96) but faces fundamental trade-offs:
-- **Speed vs. Accuracy**: Dense scanning ensures coverage but is computationally expensive
-- **Precision vs. Recall**: Confidence filtering reduces false positives but increases false negatives
-- **Generalization**: Fixed parameters work well on test set but may not adapt to varying conditions
+The system achieves strong performance (Mean IoU: 0.85, Classification F1: 0.96) through a robust but computationally intensive approach. The dual metric system (localization + classification) provides clear insights into different error sources.
 
-Suitable for offline batch processing where accuracy is prioritized over speed. Real-time applications would require significant architectural changes (batch inference, NMS, adaptive thresholds, or Region Proposal Networks).
+**Fundamental Trade-offs**:
+- **Speed vs. Coverage**: Dense scanning ensures detection but is expensive
+- **Precision vs. Recall**: Confidence filtering reduces noise but misses valid detections
+- **Flexibility vs. Optimization**: General approach works on various sizes but isn't optimized for fixed format
 
+**Best Use Cases**:
+- Offline batch processing where accuracy matters more than speed
+- Scenarios requiring interpretable detection pipeline
+- Systems needing to handle varying image sizes or aspect ratios
+- Educational purposes for understanding classical detection approaches
+
+**Not Recommended For**:
+- Real-time applications (use FPN or YOLO-style architectures instead)
+- Large-scale production systems (batch processing critical)
+- Scenarios requiring millisecond-level inference
+
+**Potential Improvements**:
+- Batch inference for window classification (10-100x speedup)
+- Multi-scale windows for better scale invariance
+- Learned confidence thresholding instead of fixed values
+- Integration with Non-Maximum Suppression (NMS) for better grouping
+- GPU acceleration for preprocessing steps
 
 ## Author
 

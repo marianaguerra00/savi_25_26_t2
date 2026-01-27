@@ -1,3 +1,11 @@
+"""
+MNIST Digit Detection System - Sliding Window Approach
+Author: João Freitas & Mariana Guerra
+
+A CNN-based sliding window detection system with comprehensive evaluation
+and interactive visualization matching the FPN implementation interface.
+"""
+
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
@@ -12,14 +20,24 @@ import cv2
 import random
 import time
 from tqdm import tqdm
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+)
+import seaborn as sns
 
 
 def loadImagesFromUbyte(filePath, numberOfImages, imageSize):
+    """Load images from ubyte binary format"""
     data = np.fromfile(filePath, dtype=np.uint8)
     return data.reshape(numberOfImages, imageSize, imageSize)
 
 
 def loadLabelsUbyte(filePath):
+    """Load annotations from custom ubyte format"""
     annotationsPerImage = []
     with open(filePath, "rb") as file:
         while True:
@@ -37,6 +55,7 @@ def loadLabelsUbyte(filePath):
 
 
 def slidingWindow(image, windowSize, stride):
+    """Generate sliding windows over the image"""
     h, w = image.shape
     for y in range(0, h - windowSize + 1, stride):
         for x in range(0, w - windowSize + 1, stride):
@@ -44,6 +63,7 @@ def slidingWindow(image, windowSize, stride):
 
 
 def mnistStyleResize(crop, threshold=40):
+    """Resize crop to 28x28 matching MNIST preprocessing"""
     ys, xs = np.where(crop > threshold)
     if len(xs) == 0:
         return cv2.resize(crop, (28, 28))
@@ -62,7 +82,9 @@ def mnistStyleResize(crop, threshold=40):
     return final
 
 
-def rejectWindow(crop, foregroundThreshold, minForegroundRatio, minMaxIntensityFactor, borderMarginRatio):
+def rejectWindow(crop, foregroundThreshold, minForegroundRatio, 
+                 minMaxIntensityFactor, borderMarginRatio):
+    """Filter out low-quality windows using multiple heuristics"""
     if np.max(crop) < np.mean(crop) + minMaxIntensityFactor * np.std(crop):
         return True
 
@@ -83,11 +105,13 @@ def rejectWindow(crop, foregroundThreshold, minForegroundRatio, minMaxIntensityF
 
 
 def computeBoxCenter(box):
+    """Calculate center coordinates of a bounding box"""
     x, y, w, h = box
     return x + w / 2, y + h / 2
 
 
 def groupBoundingBoxes(boxes, labels, distanceThreshold):
+    """Group nearby bounding boxes into single detections"""
     groups = []
     for box, label in zip(boxes, labels):
         cx, cy = computeBoxCenter(box)
@@ -114,14 +138,17 @@ def groupBoundingBoxes(boxes, labels, distanceThreshold):
 
 
 def averageBoundingBox(boxes):
+    """Compute average bounding box from a group"""
     return tuple(map(int, np.mean(boxes, axis=0)))
 
 
 def majorityVote(labels):
+    """Determine label by majority voting"""
     return max(set(labels), key=labels.count)
 
 
 def computeIoU(boxA, boxB):
+    """Calculate Intersection over Union between two boxes"""
     ax, ay, aw, ah = boxA
     bx, by, bw, bh = boxB
     xA = max(ax, bx)
@@ -134,10 +161,17 @@ def computeIoU(boxA, boxB):
 
 
 def matchDetections(predBoxes, predLabels, gtAnnotations, iouThreshold):
+    """
+    Match predictions to ground truth using IoU threshold.
+    Returns TP/FP/FN counts and classification data for matched detections.
+    """
     matchedGT = set()
     matchedPred = {}
     predToGT = {}
     tp = fp = 0
+    allTrueLabels = []
+    allPredLabels = []
+    allIoUs = []
 
     for pIdx, (pBox, pLabel) in enumerate(zip(predBoxes, predLabels)):
         bestIou = 0.0
@@ -158,6 +192,12 @@ def matchDetections(predBoxes, predLabels, gtAnnotations, iouThreshold):
             correctClass = (pLabel == bestGTLabel)
             matchedPred[pIdx] = {"gtIdx": bestGT, "correctClass": correctClass}
             predToGT[pIdx] = bestGTLabel
+            allIoUs.append(bestIou)
+            
+            # Track for classification metrics
+            allTrueLabels.append(bestGTLabel)
+            allPredLabels.append(pLabel)
+            
             if correctClass:
                 tp += 1
             else:
@@ -166,12 +206,16 @@ def matchDetections(predBoxes, predLabels, gtAnnotations, iouThreshold):
             fp += 1
 
     fn = len(gtAnnotations) - len(matchedGT)
-    return tp, fp, fn, matchedPred, matchedGT, predToGT
+    return tp, fp, fn, matchedPred, matchedGT, predToGT, allTrueLabels, allPredLabels, allIoUs
 
 
-def detectImage(image, model, device, transform, windowSize, stride, foregroundThreshold, 
-                minForegroundRatio, minMaxIntensityFactor, borderMarginRatio, 
-                confidenceThreshold, confidenceMargin, groupingDistance):
+def detectImage(image, model, device, transform, windowSize, stride, 
+                foregroundThreshold, minForegroundRatio, minMaxIntensityFactor, 
+                borderMarginRatio, confidenceThreshold, confidenceMargin, groupingDistance):
+    """
+    Perform sliding window detection on a single image.
+    Returns final bounding boxes, labels, and confidence scores.
+    """
     boxes, labels, windowStats = [], [], []
 
     for x, y, crop in slidingWindow(image, windowSize, stride):
@@ -203,76 +247,162 @@ def detectImage(image, model, device, transform, windowSize, stride, foregroundT
     return finalBoxes, finalLabels, windowStats
 
 
-def visualize(results, precision, recall, f1Score, allConfidences, totalTime):
+def visualize(results, accuracy, precision, recall, f1Score, cm, 
+             meanIoU, detectionAcc, totalTime):
+    """
+    Interactive visualization UI matching FPN interface.
+    Provides 3 metric views: Localization, Classification, Confusion Matrix.
+    """
     currentImageIndex = [0]
-    currentStatIndex = [0]
+    currentStatsIndex = [0]
 
-    fig = plt.figure(figsize=(9, 6))
-    axImage = fig.add_axes([0.10, 0.45, 0.40, 0.40])
-    axStats = fig.add_axes([0.08, 0.05, 0.45, 0.30])
-    axNextImg = fig.add_axes([0.60, 0.65, 0.35, 0.10])
-    axPrevImg = fig.add_axes([0.60, 0.53, 0.35, 0.10])
+    fig = plt.figure(figsize=(10, 7))
+    fig.canvas.manager.set_window_title('Sliding Window Detection Results')
 
-    fig.text(0.98, 0.98, f"Total processing time: {totalTime:.2f} s",
-             ha="right", va="top", fontsize=10, bbox=dict(facecolor="black", alpha=0.7))
+    axImage = fig.add_axes([0.15, 0.50, 0.45, 0.40])
+    axStats = fig.add_axes([0.08, 0.10, 0.60, 0.30])
+
+    axNextImg = fig.add_axes([0.72, 0.65, 0.25, 0.10])
+    axPrevImg = fig.add_axes([0.72, 0.53, 0.25, 0.10])
+    axNextStat = fig.add_axes([0.72, 0.25, 0.25, 0.10])
+    axPrevStat = fig.add_axes([0.72, 0.13, 0.25, 0.10])
+
+    fig.text(
+        0.98, 0.98,
+        f"Processing time: {totalTime:.2f}s",
+        ha="right", va="top",
+        fontsize=10,
+        bbox=dict(facecolor="black", alpha=0.7),
+        color="white"
+    )
 
     def drawImage():
-        idx = currentImageIndex[0]
         axImage.clear()
+        idx = currentImageIndex[0]
         data = results[idx]
 
         axImage.imshow(data["image"], cmap="gray")
         axImage.axis("off")
 
-        for pIdx, ((x, y, w, h), label) in enumerate(zip(data["boxes"], data["labels"])):
-            gtLabel = data["predToGT"].get(pIdx, None)
-            if pIdx in data["matchedPred"]:
-                color = "lime" if data["matchedPred"][pIdx]["correctClass"] else "orange"
-                tag = "TP" if data["matchedPred"][pIdx]["correctClass"] else "FP (WR)"
-            else:
-                color = "red"
-                tag = "FP"
-
-            axImage.add_patch(
-                patches.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor="none")
-            )
-
-            textY = y - 6 if y - 6 > 0 else y + h + 10
-            axImage.text(x + 2, textY, f"{label} ({tag})", color="white",
-                        fontsize=4, bbox=dict(facecolor=color, alpha=0.85))
-
-            if gtLabel is not None:
-                axImage.text(x + 25, textY, f"GT: {gtLabel}", color="black",
-                            fontsize=4, bbox=dict(facecolor="yellow", alpha=0.9))
-
+        # Draw unmatched ground truth (blue dashed)
         for gtIdx, (x, y, w, h) in enumerate(data["gtBoxes"]):
             if gtIdx not in data["matchedGT"]:
                 axImage.add_patch(
-                    patches.Rectangle((x, y), w, h, linewidth=2,
-                                    edgecolor="blue", linestyle="--", facecolor="none")
+                    patches.Rectangle(
+                        (x, y), w, h,
+                        linewidth=1.5,
+                        edgecolor="blue",
+                        facecolor="none",
+                        linestyle="--"
+                    )
                 )
 
-        axImage.set_title(f"Image {idx + 1}")
+        # Draw predictions (green=correct, red=incorrect)
+        for pIdx, ((x, y, w, h), label) in enumerate(zip(data["boxes"], data["labels"])):
+            gtLabel = data["predToGT"].get(pIdx, None)
+            
+            if pIdx in data["matchedPred"]:
+                isCorrect = data["matchedPred"][pIdx]["correctClass"]
+                color = "lime" if isCorrect else "red"
+            else:
+                color = "red"
+                isCorrect = False
+
+            axImage.add_patch(
+                patches.Rectangle(
+                    (x, y), w, h,
+                    linewidth=2,
+                    edgecolor=color,
+                    facecolor="none"
+                )
+            )
+
+            textY = y - 6 if y > 10 else y + h + 6
+            labelText = f"{label}"
+            if gtLabel is not None:
+                labelText += f" (GT: {gtLabel})"
+            
+            axImage.text(
+                x + 2, textY, labelText,
+                color="white",
+                fontsize=6,
+                bbox=dict(facecolor=color, alpha=0.85)
+            )
+
+        axImage.set_title(
+            f"Image {idx + 1}/{len(results)}\n"
+            f"Blue Dash=GT | Green=Correct | Red=Wrong"
+        )
         fig.canvas.draw_idle()
 
-    def drawMetrics():
+    def drawLocalizationMetrics():
+        """View 0: Localization Metrics"""
         axStats.clear()
-        vals = [precision, recall, f1Score]
-        axStats.bar([f"Precision {round(precision, 2)}",
-                    f"Recall {round(recall, 2)}",
-                    f"F1 {round(f1Score, 2)}"], vals)
+        
+        metrics = [meanIoU, detectionAcc]
+        labels = ["Mean IoU", "Detection Acc (IoU > 0.5)"]
+        colors = ['#3498db', '#2ecc71']
+        
+        bars = axStats.bar(labels, metrics, color=colors, alpha=0.7, width=0.5)
         axStats.set_ylim(0, 1)
+        axStats.set_title("Localization Metrics (BBox Quality)", 
+                         fontweight='bold', pad=10)
+        axStats.grid(True, alpha=0.3, axis='y')
+        
+        for bar in bars:
+            height = bar.get_height()
+            axStats.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                    f'{height:.3f}',
+                    ha='center', va='bottom', fontsize=10, fontweight='bold')
+        
+        axStats.text(0.50, -0.15,
+                    "IoU measures bbox overlap | Detection Acc = % boxes with IoU > 0.5",
+                    ha='center', va='top', transform=axStats.transAxes,
+                    fontsize=8, style='italic', color='gray')
+        fig.canvas.draw_idle()
 
-    def drawConfidence():
+    def drawClassificationMetrics():
+        """View 1: Classification Metrics"""
         axStats.clear()
-        axStats.hist(allConfidences, bins=30, range=(0, 1))
-        axStats.set_title("Confidence distribution")
+        values = [accuracy, precision, recall, f1Score]
+        labels = [
+            f"Accuracy\n{accuracy:.3f}",
+            f"Precision\n{precision:.3f}",
+            f"Recall\n{recall:.3f}",
+            f"F1\n{f1Score:.3f}"
+        ]
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+        bars = axStats.bar(labels, values, color=colors, alpha=0.7)
+        
+        axStats.set_ylim(0, 1.05)
+        axStats.set_title("Classification Metrics (Digit Recognition)", 
+                        fontweight='bold', pad=15)
+        axStats.grid(True, alpha=0.3, axis='y')
+        
+        for bar in bars:
+            height = bar.get_height()
+            axStats.text(bar.get_x() + bar.get_width()/2., 
+                    height + 0.01,
+                    f'{height:.3f}',
+                    ha='center', va='bottom', fontsize=9, fontweight='bold')
+        fig.canvas.draw_idle()
 
-    statsFns = [drawMetrics, drawConfidence]
+    def drawConfusionMatrix():
+        """View 2: Confusion Matrix"""
+        axStats.clear()
+        sns.heatmap(
+            cm, annot=True, fmt="d", cmap="Blues",
+            ax=axStats, cbar=False, square=False
+        )
+        axStats.set_title("Confusion Matrix (Digit Classes)", fontweight='bold')
+        axStats.set_xlabel("Predicted")
+        axStats.set_ylabel("True")
+        fig.canvas.draw_idle()
+
+    statsFns = [drawLocalizationMetrics, drawClassificationMetrics, drawConfusionMatrix]
 
     def drawStats():
-        statsFns[currentStatIndex[0]]()
-        fig.canvas.draw_idle()
+        statsFns[currentStatsIndex[0]]()
 
     def onNextImage(event):
         currentImageIndex[0] = min(len(results) - 1, currentImageIndex[0] + 1)
@@ -282,10 +412,23 @@ def visualize(results, precision, recall, f1Score, allConfidences, totalTime):
         currentImageIndex[0] = max(0, currentImageIndex[0] - 1)
         drawImage()
 
-    btnNextImg = Button(axNextImg, "Next image")
-    btnPrevImg = Button(axPrevImg, "Previous image")
+    def onNextStats(event):
+        currentStatsIndex[0] = (currentStatsIndex[0] + 1) % len(statsFns)
+        drawStats()
+
+    def onPrevStats(event):
+        currentStatsIndex[0] = (currentStatsIndex[0] - 1) % len(statsFns)
+        drawStats()
+
+    btnNextImg = Button(axNextImg, "Next →")
+    btnPrevImg = Button(axPrevImg, "← Previous")
+    btnNextStat = Button(axNextStat, "Next Stats →")
+    btnPrevStat = Button(axPrevStat, "← Previous Stats")
+
     btnNextImg.on_clicked(onNextImage)
     btnPrevImg.on_clicked(onPrevImage)
+    btnNextStat.on_clicked(onNextStats)
+    btnPrevStat.on_clicked(onPrevStats)
 
     drawImage()
     drawStats()
@@ -293,13 +436,20 @@ def visualize(results, precision, recall, f1Score, allConfidences, totalTime):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="versionD")
-    parser.add_argument("--modelPath", default="./mnist_cnn.pth")
-    parser.add_argument("--numImages", type=int, default=30)
-    parser.add_argument("--maxImages", type=int, default=-1)
+    parser = argparse.ArgumentParser(
+        description='MNIST Sliding Window Detection with Interactive Visualization'
+    )
+    parser.add_argument("--version", default="versionD",
+                       help="Dataset version folder (default: versionD)")
+    parser.add_argument("--modelPath", default="./mnist_cnn.pth",
+                       help="Path to trained model (default: ./mnist_cnn.pth)")
+    parser.add_argument("--numImages", type=int, default=30,
+                       help="Number of images to visualize (default: 30)")
+    parser.add_argument("--maxImages", type=int, default=-1,
+                       help="Max images to process, -1 for all (default: -1)")
     args = parser.parse_args()
 
+    # Detection parameters
     windowSize = 36
     stride = 4
     minForegroundRatio = 0.015
@@ -311,9 +461,20 @@ def main():
     groupingDistance = windowSize * 0.7
     iouThreshold = 0.3
 
+    print("\n" + "="*60)
+    print("MNIST SLIDING WINDOW DETECTION")
+    print("="*60)
+    print(f"Window Size: {windowSize}x{windowSize}")
+    print(f"Stride: {stride}")
+    print(f"Confidence Threshold: {confidenceThreshold}")
+    print(f"IoU Threshold: {iouThreshold}")
+    print("="*60 + "\n")
+
     startTime = time.time()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}\n")
 
+    # Load model
     model = ModelBetterCNN().to(device)
     model.load_state_dict(torch.load(args.modelPath, map_location=device))
     model.eval()
@@ -323,6 +484,7 @@ def main():
         transforms.Normalize((0.1307,), (0.3081,))
     ])
 
+    # Load dataset
     baseDir = os.path.dirname(os.path.abspath(__file__))
     images = loadImagesFromUbyte(
         os.path.join(baseDir, "..", "improved_dataset", args.version, "test-images-ubyte.bin"),
@@ -334,9 +496,15 @@ def main():
 
     results = []
     tp = fp = fn = 0
-    allConfidences = []
+    allTrueLabels = []
+    allPredLabels = []
+    allIoUs = []
+    detectionCorrect = 0
+    detectionTotal = 0
+    
     totalImages = len(images) if args.maxImages == -1 else min(args.maxImages, len(images))
 
+    # Process images
     for idx in tqdm(range(totalImages), desc="Processing images"):
         image = images[idx]
         finalBoxes, finalLabels, windowStats = detectImage(
@@ -345,16 +513,22 @@ def main():
             borderMarginRatio, confidenceThreshold, confidenceMargin, groupingDistance
         )
 
-        tpImg, fpImg, fnImg, matchedPred, matchedGT, predToGT = matchDetections(
+        tpImg, fpImg, fnImg, matchedPred, matchedGT, predToGT, trueLabels, predLabels, ious = matchDetections(
             finalBoxes, finalLabels, gtAnnotations[idx], iouThreshold
         )
 
         tp += tpImg
         fp += fpImg
         fn += fnImg
-
-        for pIdx in matchedPred:
-            allConfidences.append(windowStats[pIdx])
+        
+        allTrueLabels.extend(trueLabels)
+        allPredLabels.extend(predLabels)
+        allIoUs.extend(ious)
+        
+        for iou in ious:
+            detectionTotal += 1
+            if iou > 0.5:
+                detectionCorrect += 1
 
         if idx < args.numImages:
             results.append({
@@ -368,12 +542,40 @@ def main():
             })
 
     totalTime = time.time() - startTime
-    precision = tp / (tp + fp)
-    recall = tp / (tp + fn)
-    f1Score = 2 * precision * recall / max(precision + recall, 1e-8)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(allTrueLabels, allPredLabels) if allTrueLabels else 0.0
+    precision = precision_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
+    recall = recall_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
+    f1Score = f1_score(allTrueLabels, allPredLabels, average="macro", zero_division=0)
+    cm = confusion_matrix(allTrueLabels, allPredLabels) if allTrueLabels else np.zeros((10,10))
+    
+    meanIoU = np.mean(allIoUs) if allIoUs else 0.0
+    detectionAcc = (detectionCorrect / detectionTotal) if detectionTotal > 0 else 0.0
+    
+    # Print results
+    print("\n" + "=" * 60)
+    print("FINAL TEST RESULTS")
+    print("=" * 60)
+    print("Classification Metrics:")
+    print(f"  Accuracy : {accuracy:.4f}")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall   : {recall:.4f}")
+    print(f"  F1-score : {f1Score:.4f}")
+    print("\nDetection Metrics:")
+    print(f"  Mean IoU        : {meanIoU:.4f}")
+    print(f"  Detection Acc   : {detectionAcc:.4f} (IoU > 0.5)")
+    print(f"  Total detections: {detectionTotal}")
+    print(f"\nEvaluation time: {totalTime:.2f} s")
+    print("=" * 60 + "\n")
+    
+    if len(results) == 0:
+        print("No images available for visualization.")
+        return
+    
     random.shuffle(results)
-
-    visualize(results, precision, recall, f1Score, allConfidences, totalTime)
+    visualize(results, accuracy, precision, recall, f1Score, cm, 
+             meanIoU, detectionAcc, totalTime)
 
 
 if __name__ == "__main__":
