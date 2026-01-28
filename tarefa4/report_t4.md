@@ -438,7 +438,7 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 |--------|-------------------|----------|
 | **Architecture** | Sequential CNN | Fully Convolutional Network |
 | **Detection** | Exhaustive scan | Grid predictions |
-| **Speed** | ~980ms/image (98ms avg) | ~27.7ms/image (2.77ms avg) |
+| **Speed** | ~980ms/image | ~27.7ms/image |
 | **Mean IoU** | 0.625 | 0.797 |
 | **Detection Acc** | 0.700 | 0.992 |
 | **Classification Acc** | 0.975 | 0.988 |
