@@ -20,15 +20,8 @@ import torch.nn.functional as F
 
 
 def calculateIoU(box1, box2):
-    """
-    Calculate IoU (Intersection over Union) between two boxes.
-    
-    Args:
-        box1, box2: (x, y, w, h) format
-    
-    Returns:
-        iou: float between 0 and 1
-    """
+
+    # Calculate IoU (Intersection over Union) between two boxes.
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
     
@@ -55,15 +48,6 @@ def calculateIoU(box1, box2):
 
 
 class ImprovedTrainer:
-    """
-    FPN-based trainer with multi-scale loss and proper bbox handling.
-    
-    Key features:
-    - Multi-scale training (P3: 32x32, P4: 16x16)
-    - Weighted losses (conf, class, bbox)
-    - Detection metrics (IoU, detection accuracy)
-    - Learning rate scheduling
-    """
     def __init__(self, model, trainDataset, testDataset, args):
         self.model = model
         self.args = args
@@ -120,18 +104,9 @@ class ImprovedTrainer:
         self.cellSize = self.imageSize / self.gridSize
 
     def computeLossSingleScale(self, outputs, confTarget, classTarget, bboxTarget):
-        """
-        Compute loss at a single scale.
-        
-        Args:
-            outputs: [B, 15, H, W] model predictions
-            confTarget: [B, H, W] confidence targets
-            classTarget: [B, H, W] class targets
-            bboxTarget: [B, 4, H, W] bbox targets
-        
-        Returns:
-            totalLoss: weighted sum of conf + class + bbox losses
-        """
+
+        # totalLoss: weighted sum of conf + class + bbox losses
+
         # Split predictions
         confPred = outputs[:, 0]           # [B, H, W]
         classPred = outputs[:, 1:11]       # [B, 10, H, W]
@@ -161,7 +136,7 @@ class ImprovedTrainer:
         return lossConf + lossClass + lossBbox
 
     def trainEpoch(self, epoch):
-        """Train for one epoch"""
+        # Train for one epoch
         self.model.train()
         losses = []
 
@@ -208,7 +183,7 @@ class ImprovedTrainer:
         return np.mean(losses)
 
     def evaluate(self, epoch):
-        """Evaluate on validation set"""
+        # Evaluate on validation set
         self.model.eval()
         losses = []
 

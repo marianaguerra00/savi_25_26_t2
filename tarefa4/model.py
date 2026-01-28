@@ -4,19 +4,6 @@ import torch.nn.functional as F
 
 
 class ModelImprovedDetector(nn.Module):
-    """
-    Lightweight FCN detector for digit detection and classification.
-    
-    Architecture:
-    - Encoder: 4 blocks (16->32->64->128 channels)
-    - FPN: Feature Pyramid Network with two scales (P3: 32x32, P4: 16x16)
-    - Heads: Separate detection heads for each pyramid level
-    
-    Output per scale:
-    - Channel 0: objectness confidence
-    - Channels 1-10: class logits
-    - Channels 11-14: bbox offsets (tx, ty, tw, th)
-    """
     def __init__(self, numClasses=10):
         super().__init__()
         
@@ -58,7 +45,7 @@ class ModelImprovedDetector(nn.Module):
         self._initWeights()
     
     def _initWeights(self):
-        """Initialize weights using Kaiming initialization"""
+        #Initialize weights 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
@@ -69,16 +56,6 @@ class ModelImprovedDetector(nn.Module):
                 nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
-        """
-        Forward pass through encoder and FPN.
-        
-        Args:
-            x: [B, 1, 128, 128] input images
-        
-        Returns:
-            outP3: [B, 15, 32, 32] predictions at scale 1
-            outP4: [B, 15, 16, 16] predictions at scale 2
-        """
         # Encoder forward pass
         x = self.block1(x)   # [B, 16, 64, 64]
         c3 = self.block2(x)  # [B, 32, 32, 32]

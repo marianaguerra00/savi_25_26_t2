@@ -256,7 +256,6 @@ Each accepted window is preprocessed to match MNIST training format:
 2. Center digit in canvas maintaining aspect ratio
 3. Resize to 20x20 pixels
 4. Embed in 28x28 canvas with 4-pixel border
-5. Normalize using MNIST statistics (μ=0.1307, σ=0.3081)
 
 ### Bounding Box Grouping
 

@@ -1,11 +1,3 @@
-"""
-MNIST Digit Detection System - Sliding Window Approach
-Author: João Freitas & Mariana Guerra
-
-A CNN-based sliding window detection system with comprehensive evaluation
-and interactive visualization matching the FPN implementation interface.
-"""
-
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
