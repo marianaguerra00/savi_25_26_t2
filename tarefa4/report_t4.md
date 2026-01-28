@@ -1,17 +1,18 @@
-# MNIST Digit Detection - FPN Approach
+# MNIST Digit Detection - FCN Approach
 
 **Authors:** João Freitas & Mariana Guerra
 
-An integrated detector and classifier using Feature Pyramid Networks (FPN) for end-to-end digit detection and recognition.
+An integrated detector and classifier using Fully Convolutional Networks (FCN) with Feature Pyramid Networks (FPN) for end-to-end digit detection and recognition.
 
 ---
 
 ## Overview
 
-This system detects and classifies handwritten digits in 128x128 images using a lightweight FPN architecture. Unlike the sliding window approach (T3), this model directly predicts both object locations and classes in a single forward pass through a grid-based detection framework.
+This system detects and classifies handwritten digits in 128x128 images using a lightweight FCN architecture enhanced with FPN. Unlike the sliding window approach (T3), this model directly predicts both object locations and classes in a single forward pass through a grid-based detection framework.
 
 **Key Features:**
-- Feature Pyramid Network (FPN) with 2 scales
+- Fully Convolutional Network (FCN) architecture
+- Feature Pyramid Network (FPN) enhancement with 2 scales
 - End-to-end training (detection + classification)
 - Grid-based predictions (YOLO-style encoding)
 - Multi-scale loss computation
@@ -29,7 +30,7 @@ This system detects and classifies handwritten digits in 128x128 images using a 
 - Block 3: Conv(32→64) + BN + ReLU → [32×32]
 - Block 4: Conv(64→128) + BN + ReLU → [32×32]
 
-**FPN** (Feature Pyramid Network):
+**FPN Enhancement** (Feature Pyramid Network):
 - P3: 32×32 grid (main scale, stride=4 from input)
 - P4: 16×16 grid (secondary scale, stride=8 from input)
 - Lateral connections from C3→P3 and C4→P4
@@ -69,7 +70,6 @@ Object at (50, 60) with size (24, 28) in 128×128 image:
 ---
 
 ## Requirements
-
 ```bash
 pip install torch torchvision numpy matplotlib seaborn scikit-learn tqdm
 ```
@@ -79,7 +79,6 @@ pip install torch torchvision numpy matplotlib seaborn scikit-learn tqdm
 ## Usage
 
 ### Training
-
 ```bash
 python main_improved_detection.py --mode train \
                                   --numEpochs 15 \
@@ -88,7 +87,6 @@ python main_improved_detection.py --mode train \
 ```
 
 ### Testing Only
-
 ```bash
 python main_improved_detection.py --mode test \
                                   --modelPath best_model.pth
@@ -109,35 +107,58 @@ python main_improved_detection.py --mode test \
 
 ## T4 - Region Proposal ou FCN (8%)
 
-### FPN Architecture Implementation
+### FCN Architecture with FPN Enhancement
 
-**Multi-Scale Feature Extraction:**
+**Fully Convolutional Network (FCN):**
 
-The model uses Feature Pyramid Networks to detect digits at multiple scales:
+The model follows a Fully Convolutional Network (FCN) design, which is evidenced by:
+- the exclusive use of convolutional layers (no nn.Linear layers),
+- the absence of any global flattening operations,
+- and the production of dense output feature maps with shape [B, C, H, W].
 
 ```python
-# Encoder produces multi-scale features
+# Detection heads are purely convolutional (no fully connected layers)
+self.headP3 = nn.Conv2d(64, 1 + numClasses + 4, 1)
+self.headP4 = nn.Conv2d(64, 1 + numClasses + 4, 1)
+
+# Outputs preserve spatial dimensions → dense FCN predictions
+outP3 = self.headP3(p3)  # [B, 15, 32, 32]
+outP4 = self.headP4(p4)  # [B, 15, 16, 16]
+```
+
+**FPN Enhancement for Multi-Scale Detection:**
+
+To improve multi-scale detection capabilities, we integrate Feature Pyramid Networks as an enhancement feature:
+```python
+# FCN backbone produces multi-scale features
 c3 = block2(x)  # [B, 32, 32, 32]  - low-level features
 c4 = block4(x)  # [B, 128, 32, 32] - high-level features
 
-# FPN builds pyramid with top-down pathway
+# FPN enhancement: multi-scale feature fusion
 p4 = lateralC4(c4Down)  # [B, 64, 16, 16]
 p3 = lateralC3(c3) + F.interpolate(p4, scale_factor=2)  # [B, 64, 32, 32]
 
-# Separate detection heads per scale
-outP3 = headP3(p3)  # [B, 15, 32, 32] - fine-grained detection
-outP4 = headP4(p4)  # [B, 15, 16, 16] - coarse detection
+# FCN detection heads: convolutional layers produce dense predictions
+outP3 = headP3(p3)  # [B, 15, 32, 32] - per-cell predictions at fine scale
+outP4 = headP4(p4)  # [B, 15, 16, 16] - per-cell predictions at coarse scale
 ```
 
-**Why FPN?**
+**Why FCN?**
+- Fully convolutional design enables dense spatial predictions
+- No fully connected layers → can process any input size
+- Grid-based detection at multiple spatial locations simultaneously
+- 100× faster inference than sliding window (~10ms vs 980ms per image)
+
+**FPN Enhancement Benefits:**
 - P3 (32×32): Detects smaller digits with precise localization
 - P4 (16×16): Detects larger digits, provides context
 - Top-down pathway: Enriches high-resolution features with semantic info
+- Native multi-scale support without additional computation overhead
 
 **Benefits over Sliding Window:**
 - 100× faster inference (~10ms vs 980ms per image)
 - End-to-end trainable
-- Native multi-scale support
+- Native multi-scale support through FPN
 - Lower memory footprint
 
 ---
@@ -153,7 +174,6 @@ Each grid cell predicts 4 bbox parameters:
 - `tw, th`: Width/height normalized by image size (0-1 range)
 
 **Decoding to Absolute Coordinates:**
-
 ```python
 # Cell position in pixels
 cell_x = gridX * cellSize  # cellSize = 4 pixels
@@ -169,7 +189,6 @@ h = th * imageSize
 ```
 
 **Loss Function:**
-
 ```python
 bboxLoss = nn.MSELoss()
 
@@ -211,7 +230,6 @@ bboxWeight = 1.0   # Standard bbox regression
 **Objectness Confidence:**
 
 Each cell predicts a confidence score indicating whether an object is present:
-
 ```python
 # Confidence target
 confTarget[gridY, gridX] = 1.0  # Object present
@@ -228,7 +246,6 @@ lossConf = confLoss(confPred, confTarget) * confWeight  # confWeight = 2.0
 - Critical for distinguishing digits from noise
 
 **Inference Strategy:**
-
 ```python
 # Apply sigmoid to get confidence probability
 confProb = torch.sigmoid(confPred)
@@ -252,7 +269,6 @@ validClasses = classPred[objectMask]
 ## T4 - Resultados e métricas (5%)
 
 ### Training Results
-
 ```
 ==================================================
 FINAL TEST RESULTS
@@ -344,7 +360,6 @@ Interactive interface with 3 views accessible via navigation buttons:
 ### Loss Function
 
 **Multi-Scale Combined Loss:**
-
 ```python
 # P3 loss (main scale, 32×32)
 lossP3 = confLoss + classLoss + bboxLoss
@@ -363,7 +378,6 @@ totalLoss = lossP3 + 0.7 * lossP4
 - P4 scale weight: 0.7 (relative to P3)
 
 ### Optimizer & Scheduler
-
 ```python
 optimizer = Adam(lr=1e-3, weight_decay=1e-4)
 scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
@@ -371,7 +385,7 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 
 ### Training Loop
 
-1. Forward pass through FPN → (outP3, outP4)
+1. Forward pass through FCN → (outP3, outP4)
 2. Compute multi-scale losses
 3. Backpropagate combined loss
 4. Clip gradients (max_norm=1.0)
@@ -420,9 +434,9 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 
 ## Comparison: T3 vs T4
 
-| Aspect | T3 (Sliding Window) | T4 (FPN) |
+| Aspect | T3 (Sliding Window) | T4 (FCN with FPN) |
 |--------|-------------------|----------|
-| **Architecture** | Sequential CNN | Integrated FPN |
+| **Architecture** | Sequential CNN | Fully Convolutional Network |
 | **Detection** | Exhaustive scan | Grid predictions |
 | **Speed** | ~980ms/image (98ms avg) | ~27.7ms/image (2.77ms avg) |
 | **Mean IoU** | 0.625 | 0.797 |
@@ -430,7 +444,7 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 | **Classification Acc** | 0.975 | 0.988 |
 | **F1-Score** | 0.974 | 0.988 |
 | **Training** | Pre-trained CNN | End-to-end (10 epochs) |
-| **Multi-scale** | Single window (36×36) | Native FPN (P3+P4) |
+| **Multi-scale** | Single window (36×36) | FPN enhancement (P3+P4) |
 | **Background** | Window rejection | Objectness head |
 
 **Performance Summary:**
@@ -492,19 +506,6 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 - Center offset errors when digit spans multiple cells
 - Width/height regression struggles with extreme aspect ratios
 
----
-
-## File Structure
-
-```
-.
-├── main_improved_detection.py  # Training/testing entry point
-├── model.py                    # FPN architecture
-├── dataset.py                  # Data loading & encoding
-├── trainer.py                  # Training loop & evaluation
-├── best_model.pth             # Saved model weights
-└── loss_vs_epochs.png         # Training curves
-```
 
 ---
 
