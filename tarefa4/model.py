@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 class ModelImprovedDetector(nn.Module):
     """
-    Lightweight FPN-based detector for digit detection and classification.
+    Lightweight FCN detector for digit detection and classification.
     
     Architecture:
     - Encoder: 4 blocks (16->32->64->128 channels)

@@ -334,7 +334,4 @@ The system achieves strong performance (Mean IoU: 0.625, Classification F1: 0.97
 - Large-scale production systems (batch processing critical)
 - Scenarios requiring millisecond-level inference
 
-
-## Author
-
-João Freitas & Mariana Guerra
+---

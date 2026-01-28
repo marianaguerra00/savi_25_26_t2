@@ -1,5 +1,7 @@
 # Optimized CNN Classifier (MNIST)
 
+**Authors:** João Freitas & Mariana Guerra
+
 ## 1. Baseline Architecture & Design Choices
 
 Based on the classifier developed on classes, we designed a Convolutional Neural Network (CNN), named `ModelBetterCNN`. 

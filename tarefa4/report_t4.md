@@ -508,7 +508,3 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 
 
 ---
-
-## Authors
-
-João Freitas & Mariana Guerra
