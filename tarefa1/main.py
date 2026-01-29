@@ -18,21 +18,18 @@ import numpy as np
 import torch
 
 def set_seed(seed=1234):
-    """Torna o treino determinístico para garantir reprodutibilidade."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    # Garante que o cuDNN (aceleração GPU) é determinístico (pode ser mais lento)
     torch.backends.cudnn.deterministic = True 
     torch.backends.cudnn.benchmark = False
     print(f"Random Seed fixada em: {seed}")
 
-# No main block:
 if __name__ == "__main__":
-    set_seed(42) # Podes testar outros números (0, 1, 123) até voltares aos 99.4%
-    # ... resto do código ...
+    set_seed(42)
+    
 def sigintHandler(signum, frame):
     print('SIGINT received. Exiting gracefully.')
     sys.exit(0)
@@ -58,15 +55,11 @@ def main():
     args = vars(parser.parse_args())
     print(args)
     
-    # ------------------------------------
-    # register the sigtint handler
-    # ------------------------------------
     signal.signal(signal.SIGINT, sigintHandler)
 
     # ------------------------------------
     # 0. Create Experiments Folder
     # ------------------------------------
-
     experiment_name = datetime.now().strftime("%Y-%m-%d %H")
 
     args['experiment_full_name'] = os.path.join(args['experiment_path'], experiment_name)
@@ -80,19 +73,19 @@ def main():
     os.makedirs(args['experiment_full_name'])
 
     # ------------------------------------
-    # 1. Create Datasets (Train and Test!)
+    # 1. Datasets
     # ------------------------------------
     print("A carregar dataset...")
     dataset_train, dataset_test = get_mnist_datasets()
 
     # ------------------------------------
-    # 2. Create Model
+    # 2. Model
     # ------------------------------------
     model = ModelBetterCNN()
     print(f"Modelo carregado com {model.getNumberOfParameters()} parâmetros.")
 
     # ------------------------------------
-    # 3. Create Trainer
+    # 3. Trainer
     # ------------------------------------
     trainer = Trainer(model, dataset_train, dataset_test, args)
 
