@@ -104,16 +104,12 @@ class Trainer():
             print(f"Época {i+1}: Loss Treino = {train_epoch_loss:.4f} | Loss Teste = {test_epoch_loss:.4f}")
             self.draw() 
 
-            # ATUALIZAÇÃO DO INDICE DA ÉPOCA
             self.epoch_idx = i + 1
 
-            # --- CORREÇÃO 1: GRAVAR CHECKPOINT A CADA ÉPOCA ---
             self.saveTrain() 
 
         print(f"\n--- Treino Concluído ({num_epochs} Épocas) ---")
         
-        # --- CORREÇÃO 2: GRAVAR O MODELO PARA A TAREFA 3 ---
-        # Grava apenas os pesos num ficheiro .pth limpo na raiz do projeto ou na pasta do experiment
         final_weights_path = "mnist_cnn.pth"
         torch.save(self.model.state_dict(), final_weights_path)
         print(f"PESOS FINAIS GRAVADOS EM: {os.path.abspath(final_weights_path)}")
@@ -159,7 +155,7 @@ class Trainer():
         plt.close()
 
         # ----------------------
-        # 2. Relatório Scikit-Learn
+        # 2. Scikit-Learn
         # ----------------------
         report = classification_report(gt_classes, predicted_classes, digits=4)
         print("\nRelatório de Classificação:")
@@ -183,7 +179,7 @@ class Trainer():
         plt.ylabel("Loss")
         self.axis = plt.gca()
         self.axis.set_xlim([1, self.args['num_epochs']+1]) 
-        self.axis.set_ylim([0, 0.5]) # Ajustado para escala da CrossEntropy
+        self.axis.set_ylim([0, 0.5]) 
 
         # plot training
         xs = range(1, len(self.train_epoch_losses)+1)
@@ -201,7 +197,7 @@ class Trainer():
 
     def saveTrain(self):
         checkpoint = {
-            'epoch_idx': self.epoch_idx, # Corrigido typo 'epock_idk'
+            'epoch_idx': self.epoch_idx, 
             'train_epoch_losses': self.train_epoch_losses,
             'test_epoch_losses': self.test_epoch_losses,
             'model_state_dict': self.model.state_dict(),
