@@ -446,11 +446,11 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 **Performance Summary:**
 
 **T4 Wins:**
-- ✅ **35× faster** (27.7s vs 979s for 10k images)
-- ✅ **27% better IoU** (0.797 vs 0.625)
-- ✅ **42% better detection accuracy** (0.992 vs 0.700)
-- ✅ **1.3% better classification** (0.988 vs 0.975)
-- ✅ End-to-end optimized for detection task
+- **35× faster** (27.7s vs 979s for 10k images)
+- **27% better IoU** (0.797 vs 0.625)
+- **42% better detection accuracy** (0.992 vs 0.700)
+- **1.3% better classification** (0.988 vs 0.975)
+- End-to-end optimized for detection task
 
 **Why T4 is Better:**
 1. **Superior Localization:** IoU of 0.797 shows precise bbox predictions
