@@ -40,16 +40,16 @@ pip install torch torchvision numpy opencv-python matplotlib seaborn scikit-lear
 ### Basic Usage
 
 ```bash
-python detect.py
+python main_sliding_window.py
 ```
 
 ### Advanced Options
 
 ```bash
-python detect.py --version versionD \
-                 --modelPath ./mnist_cnn.pth \
-                 --numImages 30 \
-                 --maxImages 1000
+python main_sliding_window.py --version versionD \
+                              --modelPath ./mnist_cnn.pth \
+                              --numImages 30 \
+                              --maxImages 1000
 ```
 
 ### Arguments

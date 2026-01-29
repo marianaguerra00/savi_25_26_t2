@@ -130,10 +130,6 @@ outP4 = self.headP4(p4)  # [B, 15, 16, 16]
 
 To improve multi-scale detection capabilities, we integrate Feature Pyramid Networks as an enhancement feature:
 ```python
-# FCN backbone produces multi-scale features
-c3 = block2(x)  # [B, 32, 32, 32]  - low-level features
-c4 = block4(x)  # [B, 128, 32, 32] - high-level features
-
 # FPN enhancement: multi-scale feature fusion
 p4 = lateralC4(c4Down)  # [B, 64, 16, 16]
 p3 = lateralC3(c3) + F.interpolate(p4, scale_factor=2)  # [B, 64, 32, 32]
@@ -404,7 +400,7 @@ scheduler = ReduceLROnPlateau(mode='min', factor=0.5, patience=3)
 
 <table>
     <tr>
-        <td><img src="loss_vs_epochs.png" width="300"></td>
+        <td><img src="loss_vs_epochs.png" width="400"></td>
     </tr>
 </table>
 
