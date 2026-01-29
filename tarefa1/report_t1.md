@@ -40,7 +40,7 @@ We tested two extremes to understand the regularization effect:
     * **Result:** 99.41% Accuracy (best result).
     * **Analysis:** This model achieved the lowest Test Loss and it **was consistently lower than the Training Loss**. This occurs because the network trains with a lower capacity (neurons randomly silenced), but infers with its full capacity, which led to superior generalization and allowed us to verify that an aggressive dropout prevents the network from relying on single neurons for decision boundaries.
 
-        We further experimented with an higher dropout rate of **$p=0.9$**, but accuracy dropped to **99.35%**. This suggests that silencing 90% of the neurons is excessive, crossing the threshold from beneficial regularization to destructive signal loss (approaching underfitting). 
+        We further experimented with an higher dropout rate of **$p=0.9$**, but accuracy dropped to **99.35%**. This suggests that silencing 90% of the neurons is excessive, crossing the threshold from beneficial regularization to signal loss (approaching underfitting). 
 
 ### Experiment C: Depth
 
@@ -74,7 +74,7 @@ The loss landscape shows us that the **Test Loss consistently remains below the 
   <img src="confusion_matrix.png" />
 </p>
 
-The Confusion Matrix reveals that the remaining error margin (0.59%) is driven by specific morphological ambiguities rather than systemic failure, with the most frequent errors occurring between digits '4' and '9', and '2' and '7'. Notably, the model achieved **1.0000 Recall** for digit '1' and successfully resolved the generalization issue previously observed with digit '9', stabilizing its recall at **99.50%**, proving the effectiveness of the chosen architecture in handling complex handwritten topologies.
+The Confusion Matrix reveals that the remaining error margin (0.59%) is driven by specific morphological ambiguities rather than systemic failure, with the most frequent errors occurring between digits '4' and '9', and '2' and '7'. Notably, the model achieved **1.0000 Recall** for digit '1' and successfully resolved the generalization issue previously observed with digit '9'.
 
 ### 3.3. Statistical Metrics
 
